@@ -1,32 +1,32 @@
 # kup6s-pages
 
-Kubernetes Operator für statisches Website-Hosting à la GitHub Pages.
+Kubernetes Operator for static website hosting à la GitHub Pages.
 
-## Konzept
+## Concept
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│                           Request Flow                                    │
+│                           Request Flow                                   │
 ├──────────────────────────────────────────────────────────────────────────┤
 │                                                                          │
-│   https://www.kunde.at/about.html                                        │
+│   https://www.customer.com/about.html                                    │
 │            │                                                             │
 │            ▼                                                             │
 │   ┌─────────────────┐                                                    │
-│   │     Traefik     │  Host(`www.kunde.at`) matched                      │
-│   │                 │  Middleware: addPrefix(/kunde-website)             │
+│   │     Traefik     │  Host(`www.customer.com`) matched                  │
+│   │                 │  Middleware: addPrefix(/customer-website)          │
 │   └────────┬────────┘                                                    │
-│            │  /kunde-website/about.html                                  │
+│            │  /customer-website/about.html                               │
 │            ▼                                                             │
 │   ┌─────────────────┐                                                    │
 │   │  nginx (1 Pod)  │  root /sites;                                      │
-│   │                 │  serves /sites/kunde-website/about.html            │
+│   │                 │  serves /sites/customer-website/about.html         │
 │   └────────┬────────┘                                                    │
 │            │                                                             │
 │            ▼                                                             │
 │   ┌─────────────────────────────────────┐                                │
 │   │  PVC: /sites                        │                                │
-│   │  ├── kunde-website/   ← aus repo    │                                │
+│   │  ├── customer-website/ ← from repo  │                                │
 │   │  ├── user-blog/                     │                                │
 │   │  └── docs-site/                     │                                │
 │   └─────────────────────────────────────┘                                │
@@ -36,35 +36,35 @@ Kubernetes Operator für statisches Website-Hosting à la GitHub Pages.
 
 ## Features
 
-- **1 Pod für alle Sites** - kein Pod-Overhead pro Website
-- **CRD-basiert** - deklarative Konfiguration
+- **1 Pod for all sites** - no Pod overhead per website
+- **CRD-based** - declarative configuration
 - **Traefik Integration** - IngressRoute + addPrefix Middleware
-- **cert-manager Integration** - automatische TLS Zertifikate
-- **Git-basiert** - Pull aus Forgejo/GitLab/GitHub
-- **Webhook Support** - Instant Updates bei Push
+- **cert-manager Integration** - automatic TLS certificates
+- **Git-based** - pull from Forgejo/GitLab/GitHub
+- **Webhook Support** - instant updates on push
 
 ## Quick Start
 
 ```bash
-# CRD + Operator + nginx deployen
+# Deploy CRD + Operator + nginx
 kubectl apply -f deploy/
 
-# Erste Site anlegen
+# Create first site
 kubectl apply -f - <<EOF
 apiVersion: pages.kup6s.io/v1alpha1
 kind: StaticSite
 metadata:
-  name: meine-website
+  name: my-website
   namespace: pages
 spec:
   repo: https://forgejo.kup6s.io/user/website.git
   domain: www.example.com
 EOF
 
-# Status checken
+# Check status
 kubectl get staticsites
 ```
 
-## Lizenz
+## License
 
 EUPL-1.2

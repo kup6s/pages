@@ -1,4 +1,4 @@
-// Package syncer - HTTP Server für Webhooks
+// Package syncer - HTTP Server for Webhooks
 package syncer
 
 import (
@@ -16,18 +16,18 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// WebhookServer stellt HTTP Endpoints für Webhooks bereit
+// WebhookServer provides HTTP endpoints for webhooks
 type WebhookServer struct {
 	Syncer *Syncer
-	
-	// Optional: Webhook Secret für Validierung
+
+	// Optional: Webhook secret for validation
 	WebhookSecret string
 }
 
-// ServeHTTP implementiert http.Handler
+// ServeHTTP implements http.Handler
 func (w *WebhookServer) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	_ = log.FromContext(ctx) // Logger für spätere Verwendung
+	_ = log.FromContext(ctx) // Logger for later use
 
 	// Routing
 	path := strings.TrimPrefix(r.URL.Path, "/")
@@ -54,7 +54,7 @@ func (w *WebhookServer) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		w.handleGitHubWebhook(ctx, rw, r)
 
 	case r.Method == "DELETE" && len(parts) == 2 && parts[0] == "site":
-		// DELETE /site/{name} - Löscht Site-Verzeichnisse
+		// DELETE /site/{name} - Deletes site directories
 		name := parts[1]
 		w.handleDelete(ctx, rw, name)
 
@@ -63,7 +63,7 @@ func (w *WebhookServer) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleSync triggered einen Sync für eine spezifische Site
+// handleSync triggers a sync for a specific site
 func (w *WebhookServer) handleSync(ctx context.Context, rw http.ResponseWriter, r *http.Request, namespace, name string) {
 	logger := log.FromContext(ctx)
 	logger.Info("Webhook triggered", "namespace", namespace, "name", name)
@@ -78,7 +78,7 @@ func (w *WebhookServer) handleSync(ctx context.Context, rw http.ResponseWriter, 
 	fmt.Fprintf(rw, "Synced %s/%s", namespace, name)
 }
 
-// handleDelete löscht die Dateien einer Site
+// handleDelete deletes the files of a site
 func (w *WebhookServer) handleDelete(ctx context.Context, rw http.ResponseWriter, name string) {
 	logger := log.FromContext(ctx)
 	logger.Info("Delete triggered", "name", name)
@@ -93,19 +93,19 @@ func (w *WebhookServer) handleDelete(ctx context.Context, rw http.ResponseWriter
 	fmt.Fprintf(rw, "Deleted %s", name)
 }
 
-// validateWebhookSignature prüft die HMAC-SHA256 Signatur eines Webhooks
+// validateWebhookSignature validates the HMAC-SHA256 signature of a webhook
 func (w *WebhookServer) validateWebhookSignature(body []byte, signature, prefix string) bool {
 	if w.WebhookSecret == "" {
-		return true // Keine Validierung wenn kein Secret konfiguriert
+		return true // No validation if no secret configured
 	}
 
-	// Signatur-Header parsen (z.B. "sha256=abc123...")
+	// Parse signature header (e.g. "sha256=abc123...")
 	if !strings.HasPrefix(signature, prefix) {
 		return false
 	}
 	sigHex := strings.TrimPrefix(signature, prefix)
 
-	// Erwartete Signatur berechnen
+	// Calculate expected signature
 	mac := hmac.New(sha256.New, []byte(w.WebhookSecret))
 	mac.Write(body)
 	expectedSig := hex.EncodeToString(mac.Sum(nil))
@@ -113,7 +113,7 @@ func (w *WebhookServer) validateWebhookSignature(body []byte, signature, prefix 
 	return hmac.Equal([]byte(sigHex), []byte(expectedSig))
 }
 
-// ForgejoWebhookPayload ist die Webhook Payload von Forgejo/Gitea
+// ForgejoWebhookPayload is the webhook payload from Forgejo/Gitea
 type ForgejoWebhookPayload struct {
 	Ref        string `json:"ref"`
 	Repository struct {
@@ -122,18 +122,18 @@ type ForgejoWebhookPayload struct {
 	} `json:"repository"`
 }
 
-// handleForgejoWebhook verarbeitet Forgejo/Gitea Webhooks
+// handleForgejoWebhook processes Forgejo/Gitea webhooks
 func (w *WebhookServer) handleForgejoWebhook(ctx context.Context, rw http.ResponseWriter, r *http.Request) {
 	logger := log.FromContext(ctx)
 
-	// Body lesen für Signatur-Validierung
+	// Read body for signature validation
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(rw, "failed to read body", http.StatusBadRequest)
 		return
 	}
 
-	// Signatur validieren (Forgejo/Gitea: X-Gitea-Signature oder X-Hub-Signature-256)
+	// Validate signature (Forgejo/Gitea: X-Gitea-Signature or X-Hub-Signature-256)
 	signature := r.Header.Get("X-Gitea-Signature")
 	if signature == "" {
 		signature = r.Header.Get("X-Hub-Signature-256")
@@ -157,12 +157,12 @@ func (w *WebhookServer) handleForgejoWebhook(ctx context.Context, rw http.Respon
 		"ref", payload.Ref,
 	)
 
-	// Branch aus ref extrahieren (refs/heads/main -> main)
+	// Extract branch from ref (refs/heads/main -> main)
 	branch := strings.TrimPrefix(payload.Ref, "refs/heads/")
 
-	// Alle Sites mit dieser Repo URL finden und syncen
-	// Das ist etwas ineffizient, aber einfach
-	// Alternativ: Annotation an der Site mit Webhook-ID
+	// Find and sync all sites with this repo URL
+	// This is somewhat inefficient but simple
+	// Alternative: Annotation on the site with webhook ID
 	if err := w.syncByRepo(ctx, payload.Repository.CloneURL, branch); err != nil {
 		logger.Error(err, "Webhook sync failed")
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
@@ -173,7 +173,7 @@ func (w *WebhookServer) handleForgejoWebhook(ctx context.Context, rw http.Respon
 	fmt.Fprint(rw, "ok")
 }
 
-// GitHubWebhookPayload ist die Webhook Payload von GitHub
+// GitHubWebhookPayload is the webhook payload from GitHub
 type GitHubWebhookPayload struct {
 	Ref        string `json:"ref"`
 	Repository struct {
@@ -182,11 +182,11 @@ type GitHubWebhookPayload struct {
 	} `json:"repository"`
 }
 
-// handleGitHubWebhook verarbeitet GitHub Webhooks
+// handleGitHubWebhook processes GitHub webhooks
 func (w *WebhookServer) handleGitHubWebhook(ctx context.Context, rw http.ResponseWriter, r *http.Request) {
 	logger := log.FromContext(ctx)
 
-	// GitHub sendet Event-Type im Header
+	// GitHub sends event type in header
 	eventType := r.Header.Get("X-GitHub-Event")
 	if eventType != "push" {
 		rw.WriteHeader(http.StatusOK)
@@ -194,14 +194,14 @@ func (w *WebhookServer) handleGitHubWebhook(ctx context.Context, rw http.Respons
 		return
 	}
 
-	// Body lesen für Signatur-Validierung
+	// Read body for signature validation
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(rw, "failed to read body", http.StatusBadRequest)
 		return
 	}
 
-	// Signatur validieren (GitHub: X-Hub-Signature-256)
+	// Validate signature (GitHub: X-Hub-Signature-256)
 	signature := r.Header.Get("X-Hub-Signature-256")
 	if !w.validateWebhookSignature(body, signature, "sha256=") {
 		if w.WebhookSecret != "" {
@@ -234,11 +234,11 @@ func (w *WebhookServer) handleGitHubWebhook(ctx context.Context, rw http.Respons
 	fmt.Fprint(rw, "ok")
 }
 
-// syncByRepo findet alle Sites mit einer Repo URL und synct sie
+// syncByRepo finds all sites with a repo URL and syncs them
 func (w *WebhookServer) syncByRepo(ctx context.Context, repoURL, branch string) error {
 	logger := log.FromContext(ctx)
 
-	// Alle StaticSites laden
+	// Load all StaticSites
 	list, err := w.Syncer.DynamicClient.Resource(staticSiteGVR).Namespace("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return err
@@ -251,7 +251,7 @@ func (w *WebhookServer) syncByRepo(ctx context.Context, repoURL, branch string) 
 			continue
 		}
 
-		// Prüfen ob Repo und Branch matchen
+		// Check if repo and branch match
 		if site.Repo == repoURL && site.Branch == branch {
 			logger.Info("Syncing site from webhook", "name", site.Name)
 			if err := w.Syncer.syncSite(ctx, site); err != nil {
@@ -266,7 +266,7 @@ func (w *WebhookServer) syncByRepo(ctx context.Context, repoURL, branch string) 
 	return nil
 }
 
-// Start startet den HTTP Server
+// Start starts the HTTP server
 func (w *WebhookServer) Start(ctx context.Context, addr string) error {
 	logger := log.FromContext(ctx)
 	

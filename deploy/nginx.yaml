@@ -1,5 +1,5 @@
 ---
-# PVC für die Sites
+# PVC for the sites
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -7,11 +7,11 @@ metadata:
   namespace: kup6s-pages
 spec:
   accessModes:
-    - ReadWriteMany  # Wichtig: RWX damit beide Pods zugreifen können
+    - ReadWriteMany  # Important: RWX so both pods can access
   resources:
     requests:
       storage: 10Gi
-  # storageClassName: longhorn  # Anpassen an deinen Cluster
+  # storageClassName: longhorn  # Adjust for your cluster
 
 ---
 # Syncer Deployment
@@ -64,7 +64,7 @@ spec:
             claimName: static-sites-data
 
 ---
-# Syncer Service (für Webhooks)
+# Syncer Service (for webhooks)
 apiVersion: v1
 kind: Service
 metadata:
@@ -88,7 +88,7 @@ metadata:
   labels:
     app: static-sites-nginx
 spec:
-  replicas: 2  # Für HA
+  replicas: 2  # For HA
   selector:
     matchLabels:
       app: static-sites-nginx
@@ -157,27 +157,27 @@ data:
             add_header Content-Type text/plain;
         }
         
-        # Alle Sites aus /sites servieren
-        # Traefik macht den addPrefix, also:
-        # Request: www.kunde.at/about.html
-        # Traefik: addPrefix /kunde-website
-        # nginx sieht: /kunde-website/about.html
-        # Served: /sites/kunde-website/about.html
-        
+        # Serve all sites from /sites
+        # Traefik does the addPrefix, so:
+        # Request: www.customer.com/about.html
+        # Traefik: addPrefix /customer-website
+        # nginx sees: /customer-website/about.html
+        # Served: /sites/customer-website/about.html
+
         root /sites;
-        
+
         location / {
-            # Versuche Datei, dann Verzeichnis, dann index.html
+            # Try file, then directory, then index.html
             try_files $uri $uri/ $uri/index.html =404;
-            
-            # Caching für statische Assets
+
+            # Caching for static assets
             location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
                 expires 1y;
                 add_header Cache-Control "public, immutable";
             }
         }
-        
-        # Custom 404 Page (falls vorhanden)
+
+        # Custom 404 page (if available)
         error_page 404 /404.html;
         
         # Gzip
@@ -186,7 +186,7 @@ data:
     }
 
 ---
-# nginx Service (wird von IngressRoutes referenziert)
+# nginx Service (referenced by IngressRoutes)
 apiVersion: v1
 kind: Service
 metadata:

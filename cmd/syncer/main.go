@@ -53,13 +53,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Sites-Verzeichnis erstellen
+	// Create sites directory
 	if err := os.MkdirAll(sitesRoot, 0755); err != nil {
 		log.Error(err, "unable to create sites directory")
 		os.Exit(1)
 	}
 
-	// Allowed Hosts parsen
+	// Parse allowed hosts
 	var hosts []string
 	if allowedHosts != "" {
 		for _, h := range strings.Split(allowedHosts, ",") {
@@ -70,7 +70,7 @@ func main() {
 		}
 	}
 
-	// Syncer erstellen
+	// Create Syncer
 	s := &syncer.Syncer{
 		DynamicClient:   dynamicClient,
 		ClientSet:       clientset,
@@ -79,13 +79,13 @@ func main() {
 		AllowedHosts:    hosts,
 	}
 
-	// Webhook Server erstellen
+	// Create Webhook Server
 	webhookServer := &syncer.WebhookServer{
 		Syncer:        s,
 		WebhookSecret: webhookSecret,
 	}
 
-	// Context mit Cancellation
+	// Context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -93,13 +93,13 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Sync Loop in Goroutine starten
+	// Start Sync Loop in goroutine
 	go func() {
 		log.Info("Starting sync loop", "interval", syncInterval)
 		s.RunLoop(ctx)
 	}()
 
-	// Webhook Server in Goroutine starten
+	// Start Webhook Server in goroutine
 	go func() {
 		if err := webhookServer.Start(ctx, webhookAddr); err != nil {
 			log.Error(err, "webhook server failed")
@@ -112,7 +112,7 @@ func main() {
 		"webhookAddr", webhookAddr,
 	)
 
-	// Warten auf Signal
+	// Wait for signal
 	<-sigChan
 	log.Info("Shutting down")
 	cancel()

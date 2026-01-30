@@ -1,12 +1,12 @@
 ---
-# Beispiel: Namespace für User-Sites
+# Example: Namespace for user sites
 apiVersion: v1
 kind: Namespace
 metadata:
   name: pages
 
 ---
-# Beispiel: Einfache statische Site
+# Example: Simple static site
 apiVersion: pages.kup6s.io/v1alpha1
 kind: StaticSite
 metadata:
@@ -18,7 +18,7 @@ spec:
   domain: demo.example.com
 
 ---
-# Beispiel: Site mit Build-Output Subpfad
+# Example: Site with build output subpath
 apiVersion: pages.kup6s.io/v1alpha1
 kind: StaticSite
 metadata:
@@ -27,10 +27,10 @@ metadata:
 spec:
   repo: https://forgejo.kup6s.io/projekt/docs.git
   branch: main
-  path: /dist  # z.B. Vitepress Output
+  path: /dist  # e.g. Vitepress output
 
 ---
-# Beispiel: Private Repo mit Credentials
+# Example: Private repo with credentials
 apiVersion: pages.kup6s.io/v1alpha1
 kind: StaticSite
 metadata:
@@ -45,8 +45,8 @@ spec:
     key: password
 
 ---
-# Secret für private Repos (Base64 encoded)
-# echo -n "dein-token" | base64
+# Secret for private repos (Base64 encoded)
+# echo -n "your-token" | base64
 apiVersion: v1
 kind: Secret
 metadata:
@@ -54,11 +54,11 @@ metadata:
   namespace: pages
 type: Opaque
 data:
-  password: ZGVpbi10b2tlbg==  # "dein-token"
+  password: ZGVpbi10b2tlbg==  # "your-token"
 
 ---
-# IngressRoute für Webhook Endpoint
-# Damit Forgejo den Syncer direkt erreichen kann
+# IngressRoute for webhook endpoint
+# So Forgejo can reach the Syncer directly
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
@@ -77,7 +77,7 @@ spec:
     secretName: pages-webhook-tls
 
 ---
-# Certificate für Webhook
+# Certificate for webhook
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:

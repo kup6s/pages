@@ -1,4 +1,4 @@
-// Package syncer synchronisiert Git Repos für alle StaticSites
+// Package syncer synchronizes Git repos for all StaticSites
 package syncer
 
 import (
@@ -22,25 +22,25 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// Syncer synchronisiert alle StaticSites
+// Syncer synchronizes all StaticSites
 type Syncer struct {
 	DynamicClient dynamic.Interface
 	ClientSet     kubernetes.Interface
 
-	// Basisverzeichnis für Sites (z.B. /sites)
+	// Base directory for sites (e.g. /sites)
 	SitesRoot string
 
-	// Default Sync-Interval
+	// Default sync interval
 	DefaultInterval time.Duration
 
-	// AllowedHosts ist eine Liste erlaubter Git-Hosts (SSRF-Protection)
-	// Wenn leer, sind alle Hosts erlaubt
+	// AllowedHosts is a list of allowed Git hosts (SSRF protection)
+	// If empty, all hosts are allowed
 	AllowedHosts []string
 }
 
-// validateRepoURL prüft ob die Repo-URL erlaubt ist (SSRF-Protection)
+// validateRepoURL checks if the repo URL is allowed (SSRF protection)
 func (s *Syncer) validateRepoURL(repoURL string) error {
-	// Wenn keine Allowlist konfiguriert, alles erlauben
+	// If no allowlist configured, allow everything
 	if len(s.AllowedHosts) == 0 {
 		return nil
 	}
@@ -50,14 +50,14 @@ func (s *Syncer) validateRepoURL(repoURL string) error {
 		return fmt.Errorf("invalid URL: %w", err)
 	}
 
-	// Nur HTTP(S) erlauben
+	// Only allow HTTP(S)
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return fmt.Errorf("unsupported scheme: %s (only http/https allowed)", parsed.Scheme)
 	}
 
-	// Host gegen Allowlist prüfen
+	// Check host against allowlist
 	host := strings.ToLower(parsed.Host)
-	// Port entfernen falls vorhanden
+	// Remove port if present
 	if colonIdx := strings.LastIndex(host, ":"); colonIdx != -1 {
 		host = host[:colonIdx]
 	}
@@ -84,11 +84,11 @@ var staticSiteGVR = schema.GroupVersionResource{
 	Resource: "staticsites",
 }
 
-// SyncAll synchronisiert alle StaticSites
+// SyncAll synchronizes all StaticSites
 func (s *Syncer) SyncAll(ctx context.Context) error {
 	logger := log.FromContext(ctx)
-	
-	// Alle StaticSites aus allen Namespaces laden
+
+	// Load all StaticSites from all namespaces
 	list, err := s.DynamicClient.Resource(staticSiteGVR).Namespace("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to list StaticSites: %w", err)
@@ -113,7 +113,7 @@ func (s *Syncer) SyncAll(ctx context.Context) error {
 	return nil
 }
 
-// SyncOne synchronisiert eine einzelne Site (für Webhooks)
+// SyncOne synchronizes a single site (for webhooks)
 func (s *Syncer) SyncOne(ctx context.Context, namespace, name string) error {
 	logger := log.FromContext(ctx)
 	
@@ -131,18 +131,18 @@ func (s *Syncer) SyncOne(ctx context.Context, namespace, name string) error {
 	return s.syncSite(ctx, site)
 }
 
-// syncSite synchronisiert eine einzelne Site
+// syncSite synchronizes a single site
 func (s *Syncer) syncSite(ctx context.Context, site *staticSiteData) error {
 	logger := log.FromContext(ctx)
 
-	// SSRF-Protection: Repo-URL validieren
+	// SSRF protection: validate repo URL
 	if err := s.validateRepoURL(site.Repo); err != nil {
 		return fmt.Errorf("repo URL validation failed: %w", err)
 	}
 
-	// Zielverzeichnis für das Repo
-	// Bei Subpath: Klone nach .repos/<name>, Symlink nach <name>
-	// Ohne Subpath: Klone direkt nach <name>
+	// Target directory for the repo
+	// With subpath: clone to .repos/<name>, symlink to <name>
+	// Without subpath: clone directly to <name>
 	var destDir string
 	hasSubpath := site.Path != "" && site.Path != "/"
 	if hasSubpath {
@@ -151,7 +151,7 @@ func (s *Syncer) syncSite(ctx context.Context, site *staticSiteData) error {
 		destDir = filepath.Join(s.SitesRoot, site.Name)
 	}
 	
-	// Git Auth falls vorhanden
+	// Git auth if available
 	var auth *http.BasicAuth
 	if site.SecretRef != nil {
 		password, err := s.getSecretValue(ctx, site.Namespace, site.SecretRef.Name, site.SecretRef.Key)
@@ -159,14 +159,14 @@ func (s *Syncer) syncSite(ctx context.Context, site *staticSiteData) error {
 			return fmt.Errorf("failed to get git credentials: %w", err)
 		}
 		auth = &http.BasicAuth{
-			Username: "git", // Username ist bei Tokens egal
+			Username: "git", // Username doesn't matter for tokens
 			Password: password,
 		}
 	}
 
 	var commitHash string
 
-	// Prüfen ob Repo bereits existiert
+	// Check if repo already exists
 	if _, err := os.Stat(filepath.Join(destDir, ".git")); os.IsNotExist(err) {
 		// Clone
 		logger.Info("Cloning repository", "repo", site.Repo, "dest", destDir)
@@ -226,54 +226,54 @@ func (s *Syncer) syncSite(ctx context.Context, site *staticSiteData) error {
 		}
 	}
 
-	// Wenn ein Subpath definiert ist, Symlink erstellen
-	// z.B. /sites/mysite -> /sites/.repos/mysite/dist
+	// If a subpath is defined, create symlink
+	// e.g. /sites/mysite -> /sites/.repos/mysite/dist
 	if hasSubpath {
 		if err := s.setupSubpath(site.Name, destDir, site.Path); err != nil {
 			return fmt.Errorf("failed to setup subpath: %w", err)
 		}
 	}
 
-	// Status aktualisieren
+	// Update status
 	s.updateStatus(ctx, site, "Ready", "Synced successfully", commitHash)
 	
 	logger.Info("Sync complete", "site", site.Name, "commit", commitHash)
 	return nil
 }
 
-// setupSubpath erstellt einen Symlink für Subpaths
-// Das Repo wird in .repos/<name> geklont und ein Symlink von
-// /sites/<name> -> /sites/.repos/<name>/<subpath> erstellt
+// setupSubpath creates a symlink for subpaths
+// The repo is cloned to .repos/<name> and a symlink from
+// /sites/<name> -> /sites/.repos/<name>/<subpath> is created
 func (s *Syncer) setupSubpath(siteName, repoDir, subpath string) error {
-	// Subpath normalisieren (führenden / entfernen)
+	// Normalize subpath (remove leading /)
 	subpath = filepath.Clean(subpath)
 	if subpath[0] == '/' {
 		subpath = subpath[1:]
 	}
 
-	// Quellverzeichnis: Das geklonte Repo + Subpath
+	// Source directory: the cloned repo + subpath
 	srcDir := filepath.Join(repoDir, subpath)
 
-	// Prüfen ob Subpath existiert
+	// Check if subpath exists
 	if _, err := os.Stat(srcDir); os.IsNotExist(err) {
 		return fmt.Errorf("subpath %q does not exist in repository", subpath)
 	}
 
-	// Symlink-Pfad: /sites/<name> (wo nginx die Dateien erwartet)
+	// Symlink path: /sites/<name> (where nginx expects the files)
 	linkPath := filepath.Join(s.SitesRoot, siteName)
 
-	// Alten Symlink entfernen falls vorhanden
+	// Remove old symlink if present
 	if info, err := os.Lstat(linkPath); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
 			os.Remove(linkPath)
 		}
 	}
 
-	// Symlink erstellen
+	// Create symlink
 	return os.Symlink(srcDir, linkPath)
 }
 
-// getSecretValue liest einen Wert aus einem Kubernetes Secret
+// getSecretValue reads a value from a Kubernetes Secret
 func (s *Syncer) getSecretValue(ctx context.Context, namespace, name, key string) (string, error) {
 	if key == "" {
 		key = "password"
@@ -292,7 +292,7 @@ func (s *Syncer) getSecretValue(ctx context.Context, namespace, name, key string
 	return string(value), nil
 }
 
-// updateStatus aktualisiert den Status der StaticSite
+// updateStatus updates the status of the StaticSite
 func (s *Syncer) updateStatus(ctx context.Context, site *staticSiteData, phase, message, commit string) {
 	now := metav1.Now()
 	
@@ -314,7 +314,7 @@ func (s *Syncer) updateStatus(ctx context.Context, site *staticSiteData, phase, 
 	}
 }
 
-// staticSiteData ist eine vereinfachte Struktur für den Syncer
+// staticSiteData is a simplified structure for the Syncer
 type staticSiteData struct {
 	Name      string
 	Namespace string
@@ -361,7 +361,7 @@ func (s *staticSiteData) fromUnstructured(u *unstructured.Unstructured) error {
 	return nil
 }
 
-// RunLoop startet die Sync-Schleife
+// RunLoop starts the sync loop
 func (s *Syncer) RunLoop(ctx context.Context) {
 	logger := log.FromContext(ctx)
 
@@ -382,7 +382,7 @@ func (s *Syncer) RunLoop(ctx context.Context) {
 			if err := s.SyncAll(ctx); err != nil {
 				logger.Error(err, "Sync failed")
 			}
-			// Cleanup nach jedem Sync
+			// Cleanup after each sync
 			if err := s.Cleanup(ctx); err != nil {
 				logger.Error(err, "Cleanup failed")
 			}
@@ -390,23 +390,23 @@ func (s *Syncer) RunLoop(ctx context.Context) {
 	}
 }
 
-// Cleanup entfernt Verzeichnisse von gelöschten Sites
+// Cleanup removes directories of deleted sites
 func (s *Syncer) Cleanup(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 
-	// Alle StaticSites laden
+	// Load all StaticSites
 	list, err := s.DynamicClient.Resource(staticSiteGVR).Namespace("").List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to list StaticSites: %w", err)
 	}
 
-	// Set mit allen aktiven Site-Namen
+	// Set with all active site names
 	activeSites := make(map[string]bool)
 	for _, item := range list.Items {
 		activeSites[item.GetName()] = true
 	}
 
-	// Verzeichnisse in /sites durchgehen
+	// Iterate through directories in /sites
 	entries, err := os.ReadDir(s.SitesRoot)
 	if err != nil {
 		return fmt.Errorf("failed to read sites directory: %w", err)
@@ -415,17 +415,17 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 	for _, entry := range entries {
 		name := entry.Name()
 
-		// .repos Verzeichnis überspringen (wird separat behandelt)
+		// Skip .repos directory (handled separately)
 		if name == ".repos" {
 			continue
 		}
 
-		// Prüfen ob Site noch existiert
+		// Check if site still exists
 		if !activeSites[name] {
 			sitePath := filepath.Join(s.SitesRoot, name)
 			logger.Info("Removing orphaned site directory", "name", name)
 
-			// Symlink oder Verzeichnis entfernen
+			// Remove symlink or directory
 			if info, err := os.Lstat(sitePath); err == nil {
 				if info.Mode()&os.ModeSymlink != 0 {
 					os.Remove(sitePath)
@@ -436,7 +436,7 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 		}
 	}
 
-	// .repos Verzeichnisse aufräumen
+	// Clean up .repos directories
 	reposDir := filepath.Join(s.SitesRoot, ".repos")
 	if entries, err := os.ReadDir(reposDir); err == nil {
 		for _, entry := range entries {
@@ -452,12 +452,12 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 	return nil
 }
 
-// DeleteSite löscht eine spezifische Site (für Webhook-Aufrufe)
+// DeleteSite deletes a specific site (for webhook calls)
 func (s *Syncer) DeleteSite(ctx context.Context, name string) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Deleting site", "name", name)
 
-	// Symlink/Verzeichnis in /sites entfernen
+	// Remove symlink/directory in /sites
 	sitePath := filepath.Join(s.SitesRoot, name)
 	if info, err := os.Lstat(sitePath); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
@@ -467,7 +467,7 @@ func (s *Syncer) DeleteSite(ctx context.Context, name string) error {
 		}
 	}
 
-	// Repo-Verzeichnis in .repos entfernen
+	// Remove repo directory in .repos
 	repoPath := filepath.Join(s.SitesRoot, ".repos", name)
 	os.RemoveAll(repoPath)
 

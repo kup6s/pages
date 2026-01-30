@@ -20,7 +20,7 @@ spec:
       serviceAccountName: pages-operator
       containers:
         - name: operator
-          # TODO: Eigenes Image bauen
+          # TODO: Build own image
           image: ghcr.io/kleinundpartner/kup6s-pages-operator:latest
           imagePullPolicy: Always
           args:

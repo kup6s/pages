@@ -1,4 +1,4 @@
-// Package controller enthält die Reconciliation-Logik
+// Package controller contains the reconciliation logic
 package controller
 
 import (
@@ -23,23 +23,23 @@ import (
 const (
 	finalizerName = "pages.kup6s.io/finalizer"
 	
-	// nginx Service Name im System-Namespace
+	// nginx Service name in the system namespace
 	nginxServiceName = "static-sites-nginx"
 	nginxNamespace   = "kup6s-pages"
 )
 
-// StaticSiteReconciler reconciled StaticSite Ressourcen
+// StaticSiteReconciler reconciles StaticSite resources
 type StaticSiteReconciler struct {
 	client.Client
 	DynamicClient dynamic.Interface
 	Recorder      record.EventRecorder
-	
+
 	// Config
-	PagesDomain   string // z.B. "pages.kup6s.io"
-	ClusterIssuer string // z.B. "letsencrypt-prod"
+	PagesDomain   string // e.g. "pages.kup6s.io"
+	ClusterIssuer string // e.g. "letsencrypt-prod"
 }
 
-// GVRs für Traefik und cert-manager
+// GVRs for Traefik and cert-manager
 var (
 	ingressRouteGVR = schema.GroupVersionResource{
 		Group:    "traefik.io",
@@ -58,16 +58,16 @@ var (
 	}
 )
 
-// Reconcile ist die Haupt-Reconciliation-Schleife
-// Wird aufgerufen wenn sich eine StaticSite ändert
+// Reconcile is the main reconciliation loop
+// Called when a StaticSite changes
 func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
-	
-	// 1. StaticSite laden
+
+	// 1. Load StaticSite
 	site := &pagesv1.StaticSite{}
 	if err := r.Get(ctx, req.NamespacedName, site); err != nil {
 		if errors.IsNotFound(err) {
-			// Wurde gelöscht, nichts zu tun (Finalizer hat aufgeräumt)
+			// Was deleted, nothing to do (Finalizer cleaned up)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
@@ -80,7 +80,7 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return r.handleDeletion(ctx, site)
 	}
 
-	// 3. Finalizer hinzufügen falls nicht vorhanden
+	// 3. Add finalizer if not present
 	if !controllerutil.ContainsFinalizer(site, finalizerName) {
 		controllerutil.AddFinalizer(site, finalizerName)
 		if err := r.Update(ctx, site); err != nil {
@@ -89,30 +89,30 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	// 4. Domain bestimmen (custom oder generiert)
+	// 4. Determine domain (custom or generated)
 	domain := site.Spec.Domain
 	if domain == "" {
 		domain = fmt.Sprintf("%s.%s", site.Name, r.PagesDomain)
 	}
 
-	// 5. Middleware erstellen/updaten (addPrefix)
+	// 5. Create/update Middleware (addPrefix)
 	if err := r.reconcileMiddleware(ctx, site); err != nil {
 		return r.setError(ctx, site, "MiddlewareFailed", err)
 	}
 
-	// 6. IngressRoute erstellen/updaten
+	// 6. Create/update IngressRoute
 	if err := r.reconcileIngressRoute(ctx, site, domain); err != nil {
 		return r.setError(ctx, site, "IngressFailed", err)
 	}
 
-	// 7. Certificate erstellen (wenn custom domain)
+	// 7. Create Certificate (if custom domain)
 	if site.Spec.Domain != "" {
 		if err := r.reconcileCertificate(ctx, site, domain); err != nil {
 			return r.setError(ctx, site, "CertificateFailed", err)
 		}
 	}
 
-	// 8. Status aktualisieren
+	// 8. Update status
 	site.Status.Phase = pagesv1.PhaseReady
 	site.Status.Message = "Site configured, waiting for sync"
 	site.Status.URL = fmt.Sprintf("https://%s", domain)
@@ -123,15 +123,15 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	r.Recorder.Event(site, "Normal", "Configured", fmt.Sprintf("Site configured at %s", site.Status.URL))
 
-	// Requeue nach 5 Minuten für Status-Check
+	// Requeue after 5 minutes for status check
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
 }
 
-// reconcileMiddleware erstellt die Traefik Middleware für addPrefix
+// reconcileMiddleware creates the Traefik Middleware for addPrefix
 func (r *StaticSiteReconciler) reconcileMiddleware(ctx context.Context, site *pagesv1.StaticSite) error {
 	logger := log.FromContext(ctx)
-	
-	// Middleware Objekt bauen
+
+	// Build Middleware object
 	middleware := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "traefik.io/v1alpha1",
@@ -152,7 +152,7 @@ func (r *StaticSiteReconciler) reconcileMiddleware(ctx context.Context, site *pa
 			},
 			"spec": map[string]interface{}{
 				"addPrefix": map[string]interface{}{
-					// Der Pfad unter dem die Site im nginx liegt
+					// The path where the site is located in nginx
 					"prefix": "/" + site.Name,
 				},
 			},
@@ -177,16 +177,16 @@ func (r *StaticSiteReconciler) reconcileMiddleware(ctx context.Context, site *pa
 	return err
 }
 
-// reconcileIngressRoute erstellt die Traefik IngressRoute
+// reconcileIngressRoute creates the Traefik IngressRoute
 func (r *StaticSiteReconciler) reconcileIngressRoute(ctx context.Context, site *pagesv1.StaticSite, domain string) error {
 	logger := log.FromContext(ctx)
 
-	// TLS Config - bei custom domain eigenes Cert, sonst Wildcard
+	// TLS Config - custom domain gets own cert, otherwise wildcard
 	tlsConfig := map[string]interface{}{}
 	if site.Spec.Domain != "" {
 		tlsConfig["secretName"] = site.Name + "-tls"
 	} else {
-		// Wildcard cert für *.pages.kup6s.io
+		// Wildcard cert for *.pages.kup6s.io
 		tlsConfig["secretName"] = "pages-wildcard-tls"
 	}
 
@@ -251,7 +251,7 @@ func (r *StaticSiteReconciler) reconcileIngressRoute(ctx context.Context, site *
 	return err
 }
 
-// reconcileCertificate erstellt ein cert-manager Certificate
+// reconcileCertificate creates a cert-manager Certificate
 func (r *StaticSiteReconciler) reconcileCertificate(ctx context.Context, site *pagesv1.StaticSite, domain string) error {
 	logger := log.FromContext(ctx)
 
@@ -300,17 +300,17 @@ func (r *StaticSiteReconciler) reconcileCertificate(ctx context.Context, site *p
 	return err
 }
 
-// handleDeletion räumt bei Löschung auf
+// handleDeletion cleans up on deletion
 func (r *StaticSiteReconciler) handleDeletion(ctx context.Context, site *pagesv1.StaticSite) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
 	if controllerutil.ContainsFinalizer(site, finalizerName) {
 		logger.Info("Cleaning up StaticSite", "name", site.Name)
 
-		// Owned Resources werden automatisch gelöscht (ownerReferences)
-		// Hier könnten wir den Syncer triggern um /sites/<n>/ zu löschen
+		// Owned resources are automatically deleted (ownerReferences)
+		// Here we could trigger the Syncer to delete /sites/<n>/
 
-		// Finalizer entfernen
+		// Remove finalizer
 		controllerutil.RemoveFinalizer(site, finalizerName)
 		if err := r.Update(ctx, site); err != nil {
 			return ctrl.Result{}, err
@@ -320,7 +320,7 @@ func (r *StaticSiteReconciler) handleDeletion(ctx context.Context, site *pagesv1
 	return ctrl.Result{}, nil
 }
 
-// setError setzt den Error-Status und returned ein Result
+// setError sets the error status and returns a Result
 func (r *StaticSiteReconciler) setError(ctx context.Context, site *pagesv1.StaticSite, reason string, err error) (ctrl.Result, error) {
 	site.Status.Phase = pagesv1.PhaseError
 	site.Status.Message = err.Error()
@@ -331,11 +331,11 @@ func (r *StaticSiteReconciler) setError(ctx context.Context, site *pagesv1.Stati
 		return ctrl.Result{}, updateErr
 	}
 	
-	// Retry nach 30 Sekunden
+	// Retry after 30 seconds
 	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
 }
 
-// SetupWithManager registriert den Controller
+// SetupWithManager registers the controller
 func (r *StaticSiteReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pagesv1.StaticSite{}).

@@ -13,17 +13,17 @@ const (
 )
 
 var (
-	// GroupVersion ist die API Group Version
+	// GroupVersion is the API Group Version
 	GroupVersion = schema.GroupVersion{Group: Group, Version: Version}
 
-	// SchemeBuilder wird verwendet um Types zu registrieren
+	// SchemeBuilder is used to register types
 	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
 
-	// AddToScheme fügt Types zum Scheme hinzu
+	// AddToScheme adds types to the scheme
 	AddToScheme = SchemeBuilder.AddToScheme
 )
 
-// addKnownTypes registriert unsere Types
+// addKnownTypes registers our types
 func addKnownTypes(scheme *runtime.Scheme) error {
 	scheme.AddKnownTypes(GroupVersion,
 		&StaticSite{},
@@ -33,7 +33,7 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 	return nil
 }
 
-// Resource gibt die GroupResource für StaticSites zurück
+// Resource returns the GroupResource for StaticSites
 func Resource(resource string) schema.GroupResource {
 	return GroupVersion.WithResource(resource).GroupResource()
 }

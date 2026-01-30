@@ -1,29 +1,29 @@
-# kup6s-pages: Konzept
+# kup6s-pages: Concept
 
-Ein Kubernetes-nativer Service für statisches Website-Hosting, inspiriert von GitHub Pages.
+A Kubernetes-native service for static website hosting, inspired by GitHub Pages.
 
-## Problemstellung
+## Problem Statement
 
-Bestehende Lösungen für statisches Website-Hosting auf Kubernetes sind entweder ineffizient oder schwer zu integrieren:
+Existing solutions for static website hosting on Kubernetes are either inefficient or difficult to integrate:
 
-**Kubero** und ähnliche PaaS-Lösungen starten einen Pod pro Website. Bei vielen kleinen statischen Sites führt das zu erheblichem Ressourcen-Overhead.
+**Kubero** and similar PaaS solutions start one Pod per website. With many small static sites, this leads to significant resource overhead.
 
-**Codeberg pages-server** ist effizient (ein Container für alle Sites), macht aber eigenes TLS-Handling. Das kollidiert mit dem Standard-Kubernetes-Pattern (Ingress Controller + cert-manager) und erfordert SSL-Passthrough, was Layer-7-Features wie Path-Routing verhindert.
+**Codeberg pages-server** is efficient (one container for all sites) but handles TLS on its own. This conflicts with the standard Kubernetes pattern (Ingress Controller + cert-manager) and requires SSL passthrough, which prevents Layer-7 features like path routing.
 
-**git-sync als Sidecar** synchronisiert nur ein Repository pro Container. Für viele Sites bräuchte man viele Sidecars.
+**git-sync as sidecar** only synchronizes one repository per container. For many sites, you'd need many sidecars.
 
-## Designziele
+## Design Goals
 
-1. **Ressourceneffizienz**: Ein nginx-Pod served alle Sites
-2. **Kubernetes-nativ**: Integration mit Traefik IngressController und cert-manager
-3. **Deklarativ**: Sites werden als Custom Resources definiert
-4. **Git-basiert**: Automatische Synchronisation aus Git-Repositories
-5. **Custom Domains**: Jede Site kann eine eigene Domain haben
-6. **Einfach**: Minimale Konfiguration für den Endnutzer
+1. **Resource efficiency**: One nginx Pod serves all sites
+2. **Kubernetes-native**: Integration with Traefik IngressController and cert-manager
+3. **Declarative**: Sites are defined as Custom Resources
+4. **Git-based**: Automatic synchronization from Git repositories
+5. **Custom Domains**: Each site can have its own domain
+6. **Simple**: Minimal configuration for the end user
 
-## Architektur
+## Architecture
 
-### Übersicht
+### Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -39,8 +39,8 @@ Bestehende Lösungen für statisches Website-Hosting auf Kubernetes sind entwede
 │                      ┌────────────────┐                                 │
 │                      │    Operator    │                                 │
 │                      │                │                                 │
-│                      │ • Watched CRDs │                                 │
-│                      │ • Erstellt:    │                                 │
+│                      │ • Watches CRDs │                                 │
+│                      │ • Creates:     │                                 │
 │                      │   - Ingress    │                                 │
 │                      │   - Middleware │                                 │
 │                      │   - Certific.  │                                 │
@@ -62,7 +62,7 @@ Bestehende Lösungen für statisches Website-Hosting auf Kubernetes sind entwede
 │                        ┌────────────────┐                               │
 │                        │     Syncer     │                               │
 │                        │                │                               │
-│                        │ • Liest CRDs   │                               │
+│                        │ • Reads CRDs   │                               │
 │                        │ • Git clone/   │                               │
 │                        │   pull         │                               │
 │                        │ • Webhook API  │                               │
@@ -85,44 +85,44 @@ Bestehende Lösungen für statisches Website-Hosting auf Kubernetes sind entwede
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Komponenten
+### Components
 
 #### 1. StaticSite CRD
 
-Die Custom Resource Definition ist das zentrale Konfigurationselement:
+The Custom Resource Definition is the central configuration element:
 
 ```yaml
 apiVersion: pages.kup6s.io/v1alpha1
 kind: StaticSite
 metadata:
-  name: kunde-website      # Wird zum Pfad /kunde-website
+  name: customer-website      # Becomes the path /customer-website
   namespace: pages
 spec:
-  repo: https://forgejo.kup6s.io/kunde/website.git
+  repo: https://forgejo.kup6s.io/customer/website.git
   branch: main             # Optional, default: main
-  path: /dist              # Optional, default: / (Repo-Root)
-  domain: www.kunde.at     # Optional, sonst: <name>.pages.kup6s.io
-  secretRef:               # Optional, für private Repos
+  path: /dist              # Optional, default: / (repo root)
+  domain: www.customer.com # Optional, otherwise: <name>.pages.kup6s.io
+  secretRef:               # Optional, for private repos
     name: git-credentials
     key: password
   syncInterval: 5m         # Optional, default: 5m
 ```
 
-Der `metadata.name` ist zentral: Er definiert den Pfad unter dem die Site im nginx liegt (`/sites/<name>/`).
+The `metadata.name` is central: It defines the path under which the site is located in nginx (`/sites/<name>/`).
 
 #### 2. Operator
 
-Der Operator watched StaticSite-Ressourcen und erstellt für jede:
+The Operator watches StaticSite resources and creates for each:
 
 **Traefik Middleware (addPrefix)**
 ```yaml
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
-  name: kunde-website-prefix
+  name: customer-website-prefix
 spec:
   addPrefix:
-    prefix: /kunde-website
+    prefix: /customer-website
 ```
 
 **Traefik IngressRoute**
@@ -130,118 +130,118 @@ spec:
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
-  name: kunde-website
+  name: customer-website
 spec:
   entryPoints: [websecure]
   routes:
-    - match: Host(`www.kunde.at`)
+    - match: Host(`www.customer.com`)
       middlewares:
-        - name: kunde-website-prefix
+        - name: customer-website-prefix
       services:
         - name: static-sites-nginx
           namespace: kup6s-pages
           port: 80
   tls:
-    secretName: kunde-website-tls
+    secretName: customer-website-tls
 ```
 
-**cert-manager Certificate** (nur bei custom domain)
+**cert-manager Certificate** (only for custom domains)
 ```yaml
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: kunde-website-tls
+  name: customer-website-tls
 spec:
-  secretName: kunde-website-tls
+  secretName: customer-website-tls
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
   dnsNames:
-    - www.kunde.at
+    - www.customer.com
 ```
 
-Der Operator setzt Owner References, sodass alle erstellten Ressourcen automatisch gelöscht werden, wenn die StaticSite gelöscht wird.
+The Operator sets Owner References so that all created resources are automatically deleted when the StaticSite is deleted.
 
 #### 3. Syncer
 
-Ein zentraler Service der alle StaticSites synchronisiert:
+A central service that synchronizes all StaticSites:
 
-- Läuft als Deployment mit Zugriff auf das PVC
-- Pollt periodisch alle StaticSite CRDs (default: alle 5 Minuten)
-- Klont neue Repos, pullt bestehende
-- Unterstützt private Repos via Secrets
-- Bietet HTTP-API für Webhooks (Instant-Sync bei Push)
+- Runs as a Deployment with access to the PVC
+- Periodically polls all StaticSite CRDs (default: every 5 minutes)
+- Clones new repos, pulls existing ones
+- Supports private repos via Secrets
+- Provides HTTP API for webhooks (instant sync on push)
 
-**Webhook-Endpoints:**
-- `POST /sync/{namespace}/{name}` - Sync einer spezifischen Site
-- `POST /webhook/forgejo` - Forgejo/Gitea Push-Webhook
-- `POST /webhook/github` - GitHub Push-Webhook
-- `GET /health` - Health Check
+**Webhook Endpoints:**
+- `POST /sync/{namespace}/{name}` - Sync a specific site
+- `POST /webhook/forgejo` - Forgejo/Gitea push webhook
+- `POST /webhook/github` - GitHub push webhook
+- `GET /health` - Health check
 
 #### 4. nginx
 
-Ein einzelnes nginx-Deployment served alle Sites:
+A single nginx Deployment serves all sites:
 
 ```nginx
 server {
     listen 80;
     root /sites;
-    
+
     location / {
         try_files $uri $uri/ $uri/index.html =404;
     }
 }
 ```
 
-Die Konfiguration ist statisch und muss nie angepasst werden. Das Routing übernimmt Traefik via addPrefix.
+The configuration is static and never needs to be adjusted. Routing is handled by Traefik via addPrefix.
 
 #### 5. Shared PVC
 
-Ein PersistentVolumeClaim mit ReadWriteMany (RWX):
-- Syncer schreibt: `/sites/<name>/`
-- nginx liest: `/sites/<name>/`
+A PersistentVolumeClaim with ReadWriteMany (RWX):
+- Syncer writes: `/sites/<name>/`
+- nginx reads: `/sites/<name>/`
 
-## Request-Flow
+## Request Flow
 
 ```
-HTTPS Request: www.kunde.at/about.html
+HTTPS Request: www.customer.com/about.html
          │
          │ 1. TLS Termination (Traefik)
          ▼
 ┌─────────────────────────────────────────────────────────┐
 │  Traefik                                                │
 │                                                         │
-│  Route Match: Host(`www.kunde.at`)                      │
-│  Middleware:  addPrefix(/kunde-website)                 │
+│  Route Match: Host(`www.customer.com`)                  │
+│  Middleware:  addPrefix(/customer-website)              │
 │                                                         │
-│  Interner Request: /kunde-website/about.html            │
+│  Internal Request: /customer-website/about.html         │
 └────────────────────────┬────────────────────────────────┘
                          │
-                         │ 2. HTTP zu nginx Service
+                         │ 2. HTTP to nginx Service
                          ▼
 ┌─────────────────────────────────────────────────────────┐
 │  nginx                                                  │
 │                                                         │
 │  root /sites;                                           │
-│  Request: /kunde-website/about.html                     │
-│  Served:  /sites/kunde-website/about.html               │
+│  Request: /customer-website/about.html                  │
+│  Served:  /sites/customer-website/about.html            │
 └────────────────────────┬────────────────────────────────┘
                          │
-                         │ 3. Datei aus PVC
+                         │ 3. File from PVC
                          ▼
 ┌─────────────────────────────────────────────────────────┐
 │  PVC: /sites                                            │
 │                                                         │
-│  /sites/kunde-website/                                  │
+│  /sites/customer-website/                               │
 │  ├── index.html                                         │
-│  ├── about.html  ◄── Diese Datei                        │
+│  ├── about.html  ◄── This file                          │
 │  └── assets/                                            │
 └─────────────────────────────────────────────────────────┘
 ```
 
-## Sync-Flow
+## Sync Flow
 
-### Periodischer Sync
+### Periodic Sync
 
 ```
 ┌──────────────┐     ┌─────────────────────────────────────┐
@@ -251,11 +251,11 @@ HTTPS Request: www.kunde.at/about.html
 │              │     │      staticsites                    │
 └──────┬───────┘     └─────────────────────────────────────┘
        │
-       │ Für jede StaticSite:
+       │ For each StaticSite:
        ▼
 ┌──────────────────────────────────────────────────────────┐
 │                                                          │
-│  if /sites/<name>/.git existiert:                        │
+│  if /sites/<name>/.git exists:                           │
 │      git pull                                            │
 │  else:                                                   │
 │      git clone --depth=1 <repo> /sites/<name>            │
@@ -265,7 +265,7 @@ HTTPS Request: www.kunde.at/about.html
 └──────────────────────────────────────────────────────────┘
 ```
 
-### Webhook-Sync (Instant)
+### Webhook Sync (Instant)
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
@@ -282,49 +282,49 @@ HTTPS Request: www.kunde.at/about.html
 ┌──────────────────────────────────────────────────────────┐
 │                                                          │
 │  1. Parse Webhook Payload (repo URL, branch)             │
-│  2. Finde alle StaticSites mit dieser Repo URL           │
-│  3. git pull für jede matching Site                      │
+│  2. Find all StaticSites with this repo URL              │
+│  3. git pull for each matching site                      │
 │  4. Status Update                                        │
 │                                                          │
 └──────────────────────────────────────────────────────────┘
 ```
 
-## Vorteile dieses Designs
+## Benefits of This Design
 
-### Ressourceneffizienz
+### Resource Efficiency
 
-| Ansatz | 100 Sites | 1000 Sites |
-|--------|-----------|------------|
-| Pod pro Site | 100 Pods | 1000 Pods |
+| Approach | 100 Sites | 1000 Sites |
+|----------|-----------|------------|
+| Pod per Site | 100 Pods | 1000 Pods |
 | kup6s-pages | 3 Pods | 3 Pods |
 
-Die drei Pods sind: Operator (1), Syncer (1), nginx (1-2 für HA).
+The three Pods are: Operator (1), Syncer (1), nginx (1-2 for HA).
 
-### Keine dynamische nginx-Konfiguration
+### No Dynamic nginx Configuration
 
-Das addPrefix-Pattern eliminiert die Notwendigkeit, nginx bei jeder neuen Site neu zu konfigurieren:
+The addPrefix pattern eliminates the need to reconfigure nginx for each new site:
 
-- Keine ConfigMap-Updates
-- Kein nginx-Reload
-- Keine Race Conditions
+- No ConfigMap updates
+- No nginx reload
+- No race conditions
 
 ### Kubernetes-native Integration
 
-- **Traefik**: Standard-IngressController, volle Feature-Unterstützung
-- **cert-manager**: Automatische TLS-Zertifikate, auch für Custom Domains
-- **RBAC**: Feingranulare Berechtigungen
-- **Owner References**: Automatisches Cleanup
+- **Traefik**: Standard IngressController, full feature support
+- **cert-manager**: Automatic TLS certificates, also for custom domains
+- **RBAC**: Fine-grained permissions
+- **Owner References**: Automatic cleanup
 
-### Einfache Erweiterbarkeit
+### Easy Extensibility
 
-Zukünftige Features können einfach hinzugefügt werden:
+Future features can be added easily:
 
-- **Basic Auth**: Zusätzliche Traefik-Middleware
-- **Rate Limiting**: Traefik-Middleware
-- **Custom Headers**: Traefik-Middleware
-- **Redirects**: Traefik-Middleware
+- **Basic Auth**: Additional Traefik middleware
+- **Rate Limiting**: Traefik middleware
+- **Custom Headers**: Traefik middleware
+- **Redirects**: Traefik middleware
 
-## Deployment-Übersicht
+## Deployment Overview
 
 ```
 Namespace: kup6s-pages (System)
@@ -335,41 +335,41 @@ Namespace: kup6s-pages (System)
 ├── Deployment: static-sites-nginx
 │   └── Pod: nginx (replicas: 2)
 ├── Service: static-sites-nginx
-├── Service: pages-syncer (für Webhooks)
+├── Service: pages-syncer (for webhooks)
 ├── PVC: static-sites-data
 ├── ConfigMap: nginx-config
 └── ServiceAccounts + RBAC
 
 Namespace: pages (User Sites)
-├── StaticSite: kunde-a-website
-├── StaticSite: kunde-b-docs
+├── StaticSite: customer-a-website
+├── StaticSite: customer-b-docs
 ├── Secret: git-credentials (optional)
-├── IngressRoute: kunde-a-website (generated)
-├── IngressRoute: kunde-b-docs (generated)
-├── Middleware: kunde-a-website-prefix (generated)
-├── Middleware: kunde-b-docs-prefix (generated)
-├── Certificate: kunde-a-website-tls (generated)
-└── Certificate: kunde-b-docs-tls (generated)
+├── IngressRoute: customer-a-website (generated)
+├── IngressRoute: customer-b-docs (generated)
+├── Middleware: customer-a-website-prefix (generated)
+├── Middleware: customer-b-docs-prefix (generated)
+├── Certificate: customer-a-website-tls (generated)
+└── Certificate: customer-b-docs-tls (generated)
 ```
 
-## Limitierungen
+## Limitations
 
-1. **RWX Storage erforderlich**: Das PVC muss ReadWriteMany unterstützen (z.B. Longhorn, NFS, CephFS)
+1. **RWX Storage required**: The PVC must support ReadWriteMany (e.g., Longhorn, NFS, CephFS)
 
-2. **Keine Build-Pipeline**: kup6s-pages served nur statische Dateien. Build-Schritte (z.B. npm build) müssen vorher in CI/CD erfolgen
+2. **No Build Pipeline**: kup6s-pages only serves static files. Build steps (e.g., npm build) must be done beforehand in CI/CD
 
-3. **Keine Preview-Deployments**: Jede StaticSite ist eine feste Konfiguration, keine automatischen Branch-Previews
+3. **No Preview Deployments**: Each StaticSite is a fixed configuration, no automatic branch previews
 
-4. **Single Point of Sync**: Der Syncer ist ein einzelner Pod. Bei Ausfall verzögern sich Updates (aber Serving funktioniert weiter)
+4. **Single Point of Sync**: The Syncer is a single Pod. If it fails, updates are delayed (but serving continues)
 
-## Zukünftige Erweiterungen
+## Future Extensions
 
-- **Preview Deployments**: Automatische Sites für Pull Requests
-- **Build Integration**: Optional Build-Container vor Sync
-- **Metrics**: Prometheus-Metriken für Sync-Status und Fehler
-- **UI**: Web-Dashboard für Site-Verwaltung
-- **Multi-Cluster**: Sync zu mehreren Clustern
+- **Preview Deployments**: Automatic sites for Pull Requests
+- **Build Integration**: Optional build container before sync
+- **Metrics**: Prometheus metrics for sync status and errors
+- **UI**: Web dashboard for site management
+- **Multi-Cluster**: Sync to multiple clusters
 
-## Fazit
+## Conclusion
 
-kup6s-pages bietet eine ressourceneffiziente, kubernetes-native Lösung für statisches Website-Hosting. Durch die Kombination von CRD-basierter Konfiguration, zentralem Git-Sync und dem addPrefix-Pattern wird die Komplexität minimiert, während volle Integration mit dem Kubernetes-Ökosystem gewährleistet ist.
+kup6s-pages provides a resource-efficient, Kubernetes-native solution for static website hosting. Through the combination of CRD-based configuration, centralized Git sync, and the addPrefix pattern, complexity is minimized while ensuring full integration with the Kubernetes ecosystem.

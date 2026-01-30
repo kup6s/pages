@@ -1,5 +1,5 @@
 ---
-# CustomResourceDefinition für StaticSite
+# CustomResourceDefinition for StaticSite
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
@@ -46,14 +46,14 @@ spec:
                   default: main
                 path:
                   type: string
-                  description: Subpath im Repository
+                  description: Subpath in the repository
                   default: /
                 domain:
                   type: string
                   description: Custom Domain
                 secretRef:
                   type: object
-                  description: Secret mit Git Credentials
+                  description: Secret with Git credentials
                   properties:
                     name:
                       type: string
@@ -64,7 +64,7 @@ spec:
                     - name
                 syncInterval:
                   type: string
-                  description: Sync Intervall
+                  description: Sync interval
                   default: 5m
             status:
               type: object

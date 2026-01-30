@@ -45,7 +45,7 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
-	// Manager erstellen
+	// Create manager
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
@@ -58,14 +58,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Dynamic Client für Traefik/cert-manager CRDs
+	// Dynamic Client for Traefik/cert-manager CRDs
 	dynamicClient, err := dynamic.NewForConfig(ctrl.GetConfigOrDie())
 	if err != nil {
 		setupLog.Error(err, "unable to create dynamic client")
 		os.Exit(1)
 	}
 
-	// Controller registrieren
+	// Register controller
 	if err = (&controller.StaticSiteReconciler{
 		Client:        mgr.GetClient(),
 		DynamicClient: dynamicClient,

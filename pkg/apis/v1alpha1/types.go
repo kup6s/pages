@@ -14,7 +14,7 @@ import (
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
-// StaticSite definiert eine statische Website
+// StaticSite defines a static website
 type StaticSite struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`
@@ -23,77 +23,77 @@ type StaticSite struct {
 	Status StaticSiteStatus `json:"status,omitempty"`
 }
 
-// StaticSiteSpec definiert die gewünschte Konfiguration
+// StaticSiteSpec defines the desired configuration
 type StaticSiteSpec struct {
-	// Repo ist die Git Repository URL (required)
+	// Repo is the Git repository URL (required)
 	// +kubebuilder:validation:Required
 	// +kubebuilder:validation:Pattern=`^https?://.*\.git$`
 	Repo string `json:"repo"`
 
-	// Branch ist der Git Branch (default: main)
+	// Branch is the Git branch (default: main)
 	// +kubebuilder:default=main
 	// +optional
 	Branch string `json:"branch,omitempty"`
 
-	// Path ist der Subpfad im Repo der served wird (default: /)
-	// z.B. "/dist" oder "/public" bei Build-Output
+	// Path is the subpath in the repo that gets served (default: /)
+	// e.g. "/dist" or "/public" for build output
 	// +kubebuilder:default=/
 	// +optional
 	Path string `json:"path,omitempty"`
 
-	// Domain ist die custom Domain für diese Site
-	// Wenn leer: <name>.pages.kup6s.io
+	// Domain is the custom domain for this site
+	// If empty: <name>.pages.kup6s.io
 	// +optional
 	Domain string `json:"domain,omitempty"`
 
-	// SecretRef verweist auf ein Secret mit Git Credentials
-	// Für private Repos
+	// SecretRef references a Secret with Git credentials
+	// For private repos
 	// +optional
 	SecretRef *SecretReference `json:"secretRef,omitempty"`
 
-	// SyncInterval definiert wie oft der Syncer pullt (default: 5m)
+	// SyncInterval defines how often the Syncer pulls (default: 5m)
 	// +kubebuilder:default="5m"
 	// +optional
 	SyncInterval string `json:"syncInterval,omitempty"`
 }
 
-// SecretReference verweist auf ein Kubernetes Secret
+// SecretReference references a Kubernetes Secret
 type SecretReference struct {
-	// Name des Secrets
+	// Name of the Secret
 	Name string `json:"name"`
-	
-	// Key im Secret für das Password/Token (default: password)
+
+	// Key in the Secret for the password/token (default: password)
 	// +kubebuilder:default=password
 	// +optional
 	Key string `json:"key,omitempty"`
 }
 
-// StaticSiteStatus beschreibt den aktuellen Zustand
+// StaticSiteStatus describes the current state
 type StaticSiteStatus struct {
 	// Phase: Pending, Syncing, Ready, Error
 	Phase Phase `json:"phase,omitempty"`
 
-	// Message mit Details zum aktuellen Status
+	// Message with details about the current status
 	Message string `json:"message,omitempty"`
 
-	// LastSync Zeitpunkt des letzten erfolgreichen Syncs
+	// LastSync timestamp of the last successful sync
 	// +optional
 	LastSync *metav1.Time `json:"lastSync,omitempty"`
 
-	// LastCommit SHA des zuletzt synchronisierten Commits
+	// LastCommit SHA of the last synchronized commit
 	// +optional
 	LastCommit string `json:"lastCommit,omitempty"`
 
-	// URL der veröffentlichten Site
+	// URL of the published site
 	// +optional
 	URL string `json:"url,omitempty"`
 
-	// Conditions für detaillierte Status-Infos
+	// Conditions for detailed status information
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 
-// Phase beschreibt den Lifecycle-Status
+// Phase describes the lifecycle status
 // +kubebuilder:validation:Enum=Pending;Syncing;Ready;Error
 type Phase string
 
@@ -107,7 +107,7 @@ const (
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 
-// StaticSiteList ist eine Liste von StaticSites
+// StaticSiteList is a list of StaticSites
 type StaticSiteList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
