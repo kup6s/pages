@@ -1,5 +1,7 @@
 # Build Stage
-FROM golang:1.22-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
+
+ARG TARGETARCH
 
 WORKDIR /app
 
@@ -9,7 +11,7 @@ RUN go mod download
 
 # Copy source and build
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -a -o syncer ./cmd/syncer
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -a -o syncer ./cmd/syncer
 
 # Runtime Stage
 # Alpine instead of distroless because we need Git
