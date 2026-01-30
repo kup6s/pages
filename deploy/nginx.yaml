@@ -35,7 +35,7 @@ spec:
       serviceAccountName: pages-syncer
       containers:
         - name: syncer
-          image: ghcr.io/kleinundpartner/kup6s-pages-syncer:latest
+          image: ghcr.io/kup6s/pages-syncer:latest
           imagePullPolicy: Always
           args:
             - --sites-root=/sites
@@ -97,6 +97,15 @@ spec:
       labels:
         app: static-sites-nginx
     spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchLabels:
+                    app: static-sites-nginx
+                topologyKey: kubernetes.io/hostname
       containers:
         - name: nginx
           image: nginx:1.25-alpine
@@ -149,14 +158,14 @@ data:
     server {
         listen 80;
         server_name _;
-        
+
         # Health Check Endpoint
         location /health {
             access_log off;
             return 200 "ok\n";
             add_header Content-Type text/plain;
         }
-        
+
         # Serve all sites from /sites
         # Traefik does the addPrefix, so:
         # Request: www.customer.com/about.html
@@ -179,7 +188,7 @@ data:
 
         # Custom 404 page (if available)
         error_page 404 /404.html;
-        
+
         # Gzip
         gzip on;
         gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
@@ -199,3 +208,16 @@ spec:
     - name: http
       port: 80
       targetPort: 80
+
+---
+# PodDisruptionBudget for nginx HA
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: static-sites-nginx-pdb
+  namespace: kup6s-pages
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: static-sites-nginx

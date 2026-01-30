@@ -21,7 +21,7 @@ spec:
       containers:
         - name: operator
           # TODO: Build own image
-          image: ghcr.io/kleinundpartner/kup6s-pages-operator:latest
+          image: ghcr.io/kup6s/pages-operator:latest
           imagePullPolicy: Always
           args:
             - --pages-domain=pages.kup6s.io

@@ -43,7 +43,7 @@ func (s *Syncer) setupSubpath(repoDir, subpath string) error {
 ### 2. Import Path Mismatch
 
 - `go.mod`: `module github.com/kup6s/pages`
-- Code imports: `github.com/kleinundpartner/kup6s-pages/...`
+- Code imports: `github.com/kup6s/pages/...`
 
 This will fail immediately at build time.
 
