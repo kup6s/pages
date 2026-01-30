@@ -236,7 +236,7 @@ func TestSetupSubpath(t *testing.T) {
 			subpath:  "dist",
 			setup: func() string {
 				repoDir := filepath.Join(tmpDir, ".repos", "mysite")
-				os.MkdirAll(filepath.Join(repoDir, "dist"), 0755)
+				_ = os.MkdirAll(filepath.Join(repoDir, "dist"), 0755)
 				return repoDir
 			},
 			wantErr:   false,
@@ -248,7 +248,7 @@ func TestSetupSubpath(t *testing.T) {
 			subpath:  "/public",
 			setup: func() string {
 				repoDir := filepath.Join(tmpDir, ".repos", "site2")
-				os.MkdirAll(filepath.Join(repoDir, "public"), 0755)
+				_ = os.MkdirAll(filepath.Join(repoDir, "public"), 0755)
 				return repoDir
 			},
 			wantErr:   false,
@@ -260,7 +260,7 @@ func TestSetupSubpath(t *testing.T) {
 			subpath:  "nonexistent",
 			setup: func() string {
 				repoDir := filepath.Join(tmpDir, ".repos", "badsite")
-				os.MkdirAll(repoDir, 0755)
+				_ = os.MkdirAll(repoDir, 0755)
 				return repoDir
 			},
 			wantErr:   true,
@@ -272,11 +272,11 @@ func TestSetupSubpath(t *testing.T) {
 			subpath:  "new",
 			setup: func() string {
 				repoDir := filepath.Join(tmpDir, ".repos", "replace")
-				os.MkdirAll(filepath.Join(repoDir, "old"), 0755)
-				os.MkdirAll(filepath.Join(repoDir, "new"), 0755)
+				_ = os.MkdirAll(filepath.Join(repoDir, "old"), 0755)
+				_ = os.MkdirAll(filepath.Join(repoDir, "new"), 0755)
 				// Alten Symlink erstellen
 				linkPath := filepath.Join(tmpDir, "replace")
-				os.Symlink(filepath.Join(repoDir, "old"), linkPath)
+				_ = os.Symlink(filepath.Join(repoDir, "old"), linkPath)
 				return repoDir
 			},
 			wantErr:   false,
@@ -328,8 +328,8 @@ func TestDeleteSite(t *testing.T) {
 			name:     "delete directory",
 			siteName: "dir-site",
 			setup: func() {
-				os.MkdirAll(filepath.Join(tmpDir, "dir-site", "subdir"), 0755)
-				os.WriteFile(filepath.Join(tmpDir, "dir-site", "index.html"), []byte("test"), 0644)
+				_ = os.MkdirAll(filepath.Join(tmpDir, "dir-site", "subdir"), 0755)
+				_ = os.WriteFile(filepath.Join(tmpDir, "dir-site", "index.html"), []byte("test"), 0644)
 			},
 		},
 		{
@@ -337,8 +337,8 @@ func TestDeleteSite(t *testing.T) {
 			siteName: "link-site",
 			setup: func() {
 				repoDir := filepath.Join(tmpDir, ".repos", "link-site")
-				os.MkdirAll(filepath.Join(repoDir, "dist"), 0755)
-				os.Symlink(filepath.Join(repoDir, "dist"), filepath.Join(tmpDir, "link-site"))
+				_ = os.MkdirAll(filepath.Join(repoDir, "dist"), 0755)
+				_ = os.Symlink(filepath.Join(repoDir, "dist"), filepath.Join(tmpDir, "link-site"))
 			},
 		},
 		{
@@ -381,14 +381,14 @@ func TestCleanup(t *testing.T) {
 	defer os.RemoveAll(tmpDir)
 
 	// Setup: Einige Site-Verzeichnisse erstellen
-	os.MkdirAll(filepath.Join(tmpDir, "active-site"), 0755)
-	os.MkdirAll(filepath.Join(tmpDir, "orphan-site"), 0755)
-	os.MkdirAll(filepath.Join(tmpDir, ".repos", "active-site"), 0755)
-	os.MkdirAll(filepath.Join(tmpDir, ".repos", "orphan-repo"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "active-site"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpDir, "orphan-site"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpDir, ".repos", "active-site"), 0755)
+	_ = os.MkdirAll(filepath.Join(tmpDir, ".repos", "orphan-repo"), 0755)
 
 	// Symlink für orphan
-	os.MkdirAll(filepath.Join(tmpDir, ".repos", "orphan-link", "dist"), 0755)
-	os.Symlink(
+	_ = os.MkdirAll(filepath.Join(tmpDir, ".repos", "orphan-link", "dist"), 0755)
+	_ = os.Symlink(
 		filepath.Join(tmpDir, ".repos", "orphan-link", "dist"),
 		filepath.Join(tmpDir, "orphan-link"),
 	)

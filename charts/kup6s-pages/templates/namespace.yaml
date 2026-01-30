@@ -1,0 +1,8 @@
+{{- if .Values.createNamespace }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "kup6s-pages.namespace" . }}
+  labels:
+    {{- include "kup6s-pages.labels" . | nindent 4 }}
+{{- end }}

@@ -1,0 +1,14 @@
+{{- if .Values.nginx.pdb.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "kup6s-pages.fullname" . }}-nginx
+  namespace: {{ include "kup6s-pages.namespace" . }}
+  labels:
+    {{- include "kup6s-pages.nginx.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.nginx.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "kup6s-pages.nginx.selectorLabels" . | nindent 6 }}
+{{- end }}

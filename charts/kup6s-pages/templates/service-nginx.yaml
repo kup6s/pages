@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kup6s-pages.fullname" . }}-nginx
+  namespace: {{ include "kup6s-pages.namespace" . }}
+  labels:
+    {{- include "kup6s-pages.nginx.labels" . | nindent 4 }}
+  {{- with .Values.nginx.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.nginx.service.type }}
+  selector:
+    {{- include "kup6s-pages.nginx.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.nginx.service.port }}
+      targetPort: 80

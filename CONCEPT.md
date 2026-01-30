@@ -92,7 +92,7 @@ Existing solutions for static website hosting on Kubernetes are either inefficie
 The Custom Resource Definition is the central configuration element:
 
 ```yaml
-apiVersion: pages.kup6s.io/v1alpha1
+apiVersion: pages.kup6s.com/v1alpha1
 kind: StaticSite
 metadata:
   name: customer-website      # Becomes the path /customer-website
@@ -101,7 +101,7 @@ spec:
   repo: https://forgejo.kup6s.io/customer/website.git
   branch: main             # Optional, default: main
   path: /dist              # Optional, default: / (repo root)
-  domain: www.customer.com # Optional, otherwise: <name>.pages.kup6s.io
+  domain: www.customer.com # Optional, otherwise: <name>.pages.kup6s.com
   secretRef:               # Optional, for private repos
     name: git-credentials
     key: password
@@ -247,7 +247,7 @@ HTTPS Request: www.customer.com/about.html
 ┌──────────────┐     ┌─────────────────────────────────────┐
 │   Syncer     │     │  Kubernetes API                     │
 │              │     │                                     │
-│  Timer: 5m   │────▶│  GET /apis/pages.kup6s.io/v1alpha1/ │
+│  Timer: 5m   │────▶│  GET /apis/pages.kup6s.com/v1alpha1/ │
 │              │     │      staticsites                    │
 └──────┬───────┘     └─────────────────────────────────────┘
        │

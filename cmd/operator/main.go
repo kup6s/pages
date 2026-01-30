@@ -36,7 +36,7 @@ func main() {
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address for metrics endpoint")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address for health probes")
-	flag.StringVar(&pagesDomain, "pages-domain", "pages.kup6s.io", "Base domain for auto-generated URLs")
+	flag.StringVar(&pagesDomain, "pages-domain", "pages.kup6s.com", "Base domain for auto-generated URLs")
 	flag.StringVar(&clusterIssuer, "cluster-issuer", "letsencrypt-prod", "cert-manager ClusterIssuer name")
 	
 	opts := zap.Options{Development: true}

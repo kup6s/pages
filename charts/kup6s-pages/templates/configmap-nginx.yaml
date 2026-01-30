@@ -1,0 +1,51 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kup6s-pages.fullname" . }}-nginx
+  namespace: {{ include "kup6s-pages.namespace" . }}
+  labels:
+    {{- include "kup6s-pages.nginx.labels" . | nindent 4 }}
+data:
+  default.conf: |
+{{- if .Values.nginx.customConfig }}
+{{ .Values.nginx.customConfig | indent 4 }}
+{{- else }}
+    server {
+        listen 80;
+        server_name _;
+
+        # Health Check Endpoint
+        location /health {
+            access_log off;
+            return 200 "ok\n";
+            add_header Content-Type text/plain;
+        }
+
+        # Serve all sites from /sites
+        # Traefik does the addPrefix, so:
+        # Request: www.customer.com/about.html
+        # Traefik: addPrefix /customer-website
+        # nginx sees: /customer-website/about.html
+        # Served: /sites/customer-website/about.html
+
+        root /sites;
+
+        location / {
+            # Try file, then directory, then index.html
+            try_files $uri $uri/ $uri/index.html =404;
+
+            # Caching for static assets
+            location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
+                expires 1y;
+                add_header Cache-Control "public, immutable";
+            }
+        }
+
+        # Custom 404 page (if available)
+        error_page 404 /404.html;
+
+        # Gzip
+        gzip on;
+        gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
+    }
+{{- end }}

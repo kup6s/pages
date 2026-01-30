@@ -65,16 +65,34 @@ kup6s-pages deploys static websites from Git repositories to Kubernetes. A singl
 
 ## Installation
 
-```bash
-# Deploy CRD, RBAC, Operator, Syncer, and nginx
-kubectl apply -f deploy/crd.yaml
-kubectl apply -f deploy/rbac.yaml
-kubectl apply -f deploy/operator.yaml
-kubectl apply -f deploy/nginx.yaml
+### Via Helm (Recommended)
 
-# Optional: Deploy example namespace and sites
-kubectl apply -f deploy/examples.yaml
+```bash
+# Install from OCI registry
+helm install pages oci://ghcr.io/kup6s/kup6s-pages --version 0.1.0
+
+# Or with custom configuration
+helm install pages oci://ghcr.io/kup6s/kup6s-pages \
+  --set operator.pagesDomain=pages.example.com \
+  --set operator.clusterIssuer=letsencrypt-prod \
+  --set storage.storageClassName=longhorn \
+  --set webhook.enabled=true \
+  --set webhook.domain=webhook.pages.example.com
 ```
+
+#### Key Helm Values
+
+| Value | Default | Description |
+|-------|---------|-------------|
+| `operator.pagesDomain` | `pages.kup6s.com` | Base domain for auto-generated URLs |
+| `operator.clusterIssuer` | `letsencrypt-prod` | cert-manager ClusterIssuer |
+| `storage.size` | `10Gi` | PVC size for sites |
+| `storage.storageClassName` | (default) | StorageClass (must support RWX) |
+| `nginx.replicas` | `2` | nginx replicas for HA |
+| `webhook.enabled` | `false` | Enable webhook IngressRoute |
+| `webhook.domain` | `webhook.pages.kup6s.com` | Webhook endpoint domain |
+
+See [charts/kup6s-pages/values.yaml](charts/kup6s-pages/values.yaml) for all options.
 
 ### Verify Installation
 
@@ -83,7 +101,7 @@ kubectl apply -f deploy/examples.yaml
 kubectl get pods -n kup6s-pages
 
 # Check CRD is registered
-kubectl get crd staticsites.pages.kup6s.io
+kubectl get crd staticsites.pages.kup6s.com
 ```
 
 ## Usage
@@ -91,7 +109,7 @@ kubectl get crd staticsites.pages.kup6s.io
 ### Basic Site (Public Repository)
 
 ```yaml
-apiVersion: pages.kup6s.io/v1alpha1
+apiVersion: pages.kup6s.com/v1alpha1
 kind: StaticSite
 metadata:
   name: my-website
@@ -112,7 +130,7 @@ The operator will:
 For sites with build tools (Vite, Hugo, Sphinx, etc.) where the output is in a subdirectory:
 
 ```yaml
-apiVersion: pages.kup6s.io/v1alpha1
+apiVersion: pages.kup6s.com/v1alpha1
 kind: StaticSite
 metadata:
   name: docs
@@ -144,7 +162,7 @@ stringData:
 2. Reference the Secret in your StaticSite:
 
 ```yaml
-apiVersion: pages.kup6s.io/v1alpha1
+apiVersion: pages.kup6s.com/v1alpha1
 kind: StaticSite
 metadata:
   name: internal-docs
@@ -164,14 +182,14 @@ The Secret must be in the same namespace as the StaticSite.
 If no `domain` is specified, the site gets a subdomain of the configured pages domain:
 
 ```yaml
-apiVersion: pages.kup6s.io/v1alpha1
+apiVersion: pages.kup6s.com/v1alpha1
 kind: StaticSite
 metadata:
   name: my-project
   namespace: pages
 spec:
   repo: https://github.com/user/my-project.git
-  # No domain specified → https://my-project.pages.kup6s.io
+  # No domain specified → https://my-project.pages.kup6s.com
 ```
 
 ## CRD Reference
@@ -219,37 +237,27 @@ For instant deployments on push, configure webhooks in your Git provider.
 
 | Provider | URL |
 |----------|-----|
-| Forgejo/Gitea | `https://webhook.pages.kup6s.io/webhook/forgejo` |
-| GitHub | `https://webhook.pages.kup6s.io/webhook/github` |
-| Manual trigger | `POST https://webhook.pages.kup6s.io/sync/{namespace}/{name}` |
+| Forgejo/Gitea | `https://webhook.pages.kup6s.com/webhook/forgejo` |
+| GitHub | `https://webhook.pages.kup6s.com/webhook/github` |
+| Manual trigger | `POST https://webhook.pages.kup6s.com/sync/{namespace}/{name}` |
 
 ### Setup Webhook Ingress
 
-Deploy the webhook IngressRoute (see `deploy/examples.yaml`):
+Enable webhooks in your Helm values:
 
 ```yaml
-apiVersion: traefik.io/v1alpha1
-kind: IngressRoute
-metadata:
-  name: pages-webhook
-  namespace: kup6s-pages
-spec:
-  entryPoints:
-    - websecure
-  routes:
-    - match: Host(`webhook.pages.kup6s.io`)
-      kind: Rule
-      services:
-        - name: pages-syncer
-          port: 80
-  tls:
-    secretName: pages-webhook-tls
+webhook:
+  enabled: true
+  domain: "webhook.pages.example.com"
+  clusterIssuer: "letsencrypt-prod"
 ```
+
+This creates the IngressRoute and Certificate automatically.
 
 ### Configure in Forgejo/Gitea
 
 1. Go to Repository → Settings → Webhooks → Add Webhook
-2. URL: `https://webhook.pages.kup6s.io/webhook/forgejo`
+2. URL: `https://webhook.pages.kup6s.com/webhook/forgejo`
 3. Content Type: `application/json`
 4. Secret: (optional, for signature validation)
 5. Events: Push events
@@ -257,7 +265,7 @@ spec:
 ### Configure in GitHub
 
 1. Go to Repository → Settings → Webhooks → Add webhook
-2. Payload URL: `https://webhook.pages.kup6s.io/webhook/github`
+2. Payload URL: `https://webhook.pages.kup6s.com/webhook/github`
 3. Content type: `application/json`
 4. Secret: (optional, for signature validation)
 5. Events: Just the push event
@@ -268,7 +276,7 @@ The operator accepts these flags:
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `--pages-domain` | `pages.kup6s.io` | Base domain for auto-generated subdomains |
+| `--pages-domain` | `pages.kup6s.com` | Base domain for auto-generated subdomains |
 | `--cluster-issuer` | `letsencrypt-prod` | cert-manager ClusterIssuer name |
 | `--metrics-bind-address` | `:8080` | Metrics endpoint |
 | `--health-probe-bind-address` | `:8081` | Health probe endpoint |
@@ -327,7 +335,7 @@ git clone https://git:YOUR_TOKEN@forgejo.example.com/org/repo.git
 
 Trigger a manual sync via webhook:
 ```bash
-curl -X POST https://webhook.pages.kup6s.io/sync/pages/my-website
+curl -X POST https://webhook.pages.kup6s.com/sync/pages/my-website
 ```
 
 ## Development
@@ -337,13 +345,18 @@ curl -X POST https://webhook.pages.kup6s.io/sync/pages/my-website
 ```
 pages/
 ├── cmd/
-│   ├── operator/      # Operator entrypoint
-│   └── syncer/        # Syncer entrypoint
+│   ├── operator/         # Operator entrypoint
+│   └── syncer/           # Syncer entrypoint
 ├── pkg/
-│   ├── apis/v1alpha1/ # CRD types
-│   ├── controller/    # Reconciliation logic
-│   └── syncer/        # Git sync and webhook server
-└── deploy/            # Kubernetes manifests
+│   ├── apis/v1alpha1/    # CRD types
+│   ├── controller/       # Reconciliation logic
+│   └── syncer/           # Git sync and webhook server
+└── charts/kup6s-pages/   # Helm chart
+    ├── Chart.yaml
+    ├── values.yaml
+    ├── templates/
+    ├── crds/
+    └── tests/            # Helm unit tests
 ```
 
 ### Build
@@ -359,7 +372,12 @@ go build -o bin/syncer ./cmd/syncer
 ### Run Tests
 
 ```bash
+# Go tests
 go test ./...
+
+# Helm chart tests
+helm lint charts/kup6s-pages
+helm unittest charts/kup6s-pages
 ```
 
 ### Run Locally (for development)

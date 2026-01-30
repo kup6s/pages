@@ -1,0 +1,69 @@
+suite: webhook tests
+templates:
+  - templates/ingressroute-webhook.yaml
+  - templates/certificate-webhook.yaml
+tests:
+  - it: should not create IngressRoute when webhook disabled
+    template: templates/ingressroute-webhook.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should not create Certificate when webhook disabled
+    template: templates/certificate-webhook.yaml
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should create IngressRoute when webhook enabled
+    template: templates/ingressroute-webhook.yaml
+    set:
+      webhook.enabled: true
+    asserts:
+      - isKind:
+          of: IngressRoute
+      - equal:
+          path: spec.routes[0].match
+          value: Host(`webhook.pages.kup6s.com`)
+
+  - it: should create Certificate when webhook enabled
+    template: templates/certificate-webhook.yaml
+    set:
+      webhook.enabled: true
+    asserts:
+      - isKind:
+          of: Certificate
+      - contains:
+          path: spec.dnsNames
+          content: webhook.pages.kup6s.com
+
+  - it: should use custom webhook domain
+    template: templates/ingressroute-webhook.yaml
+    set:
+      webhook.enabled: true
+      webhook.domain: hooks.example.com
+    asserts:
+      - equal:
+          path: spec.routes[0].match
+          value: Host(`hooks.example.com`)
+
+  - it: should use operator clusterIssuer by default
+    template: templates/certificate-webhook.yaml
+    set:
+      webhook.enabled: true
+      operator.clusterIssuer: my-issuer
+    asserts:
+      - equal:
+          path: spec.issuerRef.name
+          value: my-issuer
+
+  - it: should use custom webhook clusterIssuer when specified
+    template: templates/certificate-webhook.yaml
+    set:
+      webhook.enabled: true
+      operator.clusterIssuer: default-issuer
+      webhook.clusterIssuer: webhook-issuer
+    asserts:
+      - equal:
+          path: spec.issuerRef.name
+          value: webhook-issuer

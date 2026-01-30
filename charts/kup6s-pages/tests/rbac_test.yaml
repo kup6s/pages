@@ -1,0 +1,66 @@
+suite: RBAC tests
+templates:
+  - templates/serviceaccount-operator.yaml
+  - templates/serviceaccount-syncer.yaml
+  - templates/clusterrole-operator.yaml
+  - templates/clusterrole-syncer.yaml
+  - templates/clusterrolebinding-operator.yaml
+  - templates/clusterrolebinding-syncer.yaml
+tests:
+  - it: should create operator serviceaccount
+    template: templates/serviceaccount-operator.yaml
+    asserts:
+      - isKind:
+          of: ServiceAccount
+      - matchRegex:
+          path: metadata.name
+          pattern: -operator$
+
+  - it: should create syncer serviceaccount
+    template: templates/serviceaccount-syncer.yaml
+    asserts:
+      - isKind:
+          of: ServiceAccount
+      - matchRegex:
+          path: metadata.name
+          pattern: -syncer$
+
+  - it: should create operator clusterrole with correct API group
+    template: templates/clusterrole-operator.yaml
+    asserts:
+      - isKind:
+          of: ClusterRole
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["pages.kup6s.com"]
+            resources: ["staticsites"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  - it: should create syncer clusterrole with correct API group
+    template: templates/clusterrole-syncer.yaml
+    asserts:
+      - isKind:
+          of: ClusterRole
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["pages.kup6s.com"]
+            resources: ["staticsites"]
+            verbs: ["get", "list", "watch"]
+
+  - it: should not create RBAC when disabled
+    template: templates/clusterrole-operator.yaml
+    set:
+      rbac.create: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should not create serviceaccount when disabled
+    template: templates/serviceaccount-operator.yaml
+    set:
+      operator.serviceAccount.create: false
+    asserts:
+      - hasDocuments:
+          count: 0

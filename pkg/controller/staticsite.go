@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	finalizerName = "pages.kup6s.io/finalizer"
+	finalizerName = "pages.kup6s.com/finalizer"
 	
 	// nginx Service name in the system namespace
 	nginxServiceName = "static-sites-nginx"
@@ -35,7 +35,7 @@ type StaticSiteReconciler struct {
 	Recorder      record.EventRecorder
 
 	// Config
-	PagesDomain   string // e.g. "pages.kup6s.io"
+	PagesDomain   string // e.g. "pages.kup6s.com"
 	ClusterIssuer string // e.g. "letsencrypt-prod"
 }
 
@@ -186,7 +186,7 @@ func (r *StaticSiteReconciler) reconcileIngressRoute(ctx context.Context, site *
 	if site.Spec.Domain != "" {
 		tlsConfig["secretName"] = site.Name + "-tls"
 	} else {
-		// Wildcard cert for *.pages.kup6s.io
+		// Wildcard cert for *.pages.kup6s.com
 		tlsConfig["secretName"] = "pages-wildcard-tls"
 	}
 

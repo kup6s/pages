@@ -1,0 +1,18 @@
+apiVersion: v2
+name: kup6s-pages
+description: Kubernetes Operator for multi-tenant static website hosting
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+home: https://github.com/kup6s/pages
+sources:
+  - https://github.com/kup6s/pages
+keywords:
+  - kubernetes
+  - operator
+  - static-sites
+  - hosting
+  - traefik
+maintainers:
+  - name: kup6s
+    url: https://kup6s.com

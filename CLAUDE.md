@@ -13,29 +13,35 @@ Traffic: Traefik → addPrefix middleware → nginx → `/sites/<name>/`
 ## Project Structure
 
 ```
-cmd/operator/      # Operator entrypoint
-cmd/syncer/        # Syncer entrypoint
-pkg/apis/v1alpha1/ # StaticSite CRD types
-pkg/controller/    # Reconciliation logic
-pkg/syncer/        # Git sync + webhook server
-deploy/            # K8s manifests (crd, rbac, operator, nginx)
+cmd/operator/        # Operator entrypoint
+cmd/syncer/          # Syncer entrypoint
+pkg/apis/v1alpha1/   # StaticSite CRD types
+pkg/controller/      # Reconciliation logic
+pkg/syncer/          # Git sync + webhook server
+charts/kup6s-pages/  # Helm chart
 ```
 
 ## Common Commands
 
 ```bash
-make build          # Build both binaries
-make test           # Run all tests
-make run-operator   # Local dev (requires kubeconfig)
-make run-syncer     # Local dev with tmp dir
+# Build
+go build ./...
 
-make docker-build   # Build container images
-make deploy         # Apply all manifests
+# Test
+go test ./...
+helm unittest charts/kup6s-pages
+
+# Local development
+go run ./cmd/operator --pages-domain=pages.local
+go run ./cmd/syncer --sites-root=/tmp/sites
+
+# Install via Helm
+helm install pages oci://ghcr.io/kup6s/kup6s-pages
 ```
 
 ## Key APIs
 
-- CRD: `staticsites.pages.kup6s.io/v1alpha1`
+- CRD: `staticsites.pages.kup6s.com/v1alpha1`
 - Namespace: `kup6s-pages`
 - Service: `static-sites-nginx` (HTTP), `pages-syncer` (webhooks)
 
@@ -45,3 +51,7 @@ make deploy         # Apply all manifests
 - controller-runtime v0.18
 - go-git v5.12
 - Requires: Traefik, cert-manager, RWX StorageClass
+
+# Commits
+
+Do not mention AI/Claude.

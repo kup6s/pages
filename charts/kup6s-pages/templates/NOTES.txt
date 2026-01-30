@@ -1,0 +1,36 @@
+kup6s-pages has been installed!
+
+Get the status of your installation:
+
+  kubectl get pods -n {{ include "kup6s-pages.namespace" . }}
+
+Create a StaticSite:
+
+  cat <<EOF | kubectl apply -f -
+  apiVersion: pages.kup6s.com/v1alpha1
+  kind: StaticSite
+  metadata:
+    name: my-website
+    namespace: pages
+  spec:
+    repo: https://github.com/user/my-website.git
+    domain: www.example.com
+  EOF
+
+Check StaticSite status:
+
+  kubectl get staticsites -A
+  kubectl describe staticsite my-website -n pages
+
+{{- if .Values.webhook.enabled }}
+
+Webhook endpoint enabled at:
+  https://{{ .Values.webhook.domain }}
+
+Webhook URLs:
+  - Forgejo/Gitea: https://{{ .Values.webhook.domain }}/webhook/forgejo
+  - GitHub:        https://{{ .Values.webhook.domain }}/webhook/github
+  - Manual sync:   POST https://{{ .Values.webhook.domain }}/sync/{namespace}/{name}
+{{- end }}
+
+For more information, see: https://github.com/kup6s/pages

@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kup6s-pages.fullname" . }}-syncer
+  namespace: {{ include "kup6s-pages.namespace" . }}
+  labels:
+    {{- include "kup6s-pages.syncer.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.syncer.replicas }}
+  selector:
+    matchLabels:
+      {{- include "kup6s-pages.syncer.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.syncer.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "kup6s-pages.syncer.selectorLabels" . | nindent 8 }}
+        {{- with .Values.syncer.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "kup6s-pages.syncer.serviceAccountName" . }}
+      {{- with .Values.syncer.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: syncer
+          image: {{ include "kup6s-pages.image" (dict "image" .Values.syncer.image "defaultTag" .Chart.AppVersion) }}
+          imagePullPolicy: {{ .Values.syncer.image.pullPolicy }}
+          args:
+            - --sites-root={{ .Values.syncer.sitesRoot }}
+            - --sync-interval={{ .Values.syncer.syncInterval }}
+            - --webhook-addr={{ .Values.syncer.webhookAddr }}
+            {{- range .Values.syncer.extraArgs }}
+            - {{ . }}
+            {{- end }}
+          ports:
+            - name: webhook
+              containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            - name: sites
+              mountPath: {{ .Values.syncer.sitesRoot }}
+          {{- with .Values.syncer.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.syncer.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      volumes:
+        - name: sites
+          persistentVolumeClaim:
+            claimName: {{ include "kup6s-pages.pvcName" . }}
+      {{- with .Values.syncer.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.syncer.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.syncer.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

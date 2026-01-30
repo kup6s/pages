@@ -277,7 +277,7 @@ func (w *WebhookServer) Start(ctx context.Context, addr string) error {
 
 	go func() {
 		<-ctx.Done()
-		server.Shutdown(context.Background())
+		_ = server.Shutdown(context.Background())
 	}()
 
 	logger.Info("Starting webhook server", "addr", addr)

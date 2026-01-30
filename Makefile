@@ -43,27 +43,24 @@ docker-push-operator:
 docker-push-syncer:
 	docker push $(SYNCER_IMG)
 
-## Deploy
+## Deploy (via Helm)
 
-deploy: deploy-crd deploy-rbac deploy-operator deploy-nginx
-
-deploy-crd:
-	kubectl apply -f deploy/crd.yaml
-
-deploy-rbac:
-	kubectl apply -f deploy/rbac.yaml
-
-deploy-operator:
-	kubectl apply -f deploy/operator.yaml
-
-deploy-nginx:
-	kubectl apply -f deploy/nginx.yaml
+deploy:
+	helm upgrade --install pages charts/kup6s-pages --namespace kup6s-pages --create-namespace
 
 undeploy:
-	kubectl delete -f deploy/nginx.yaml --ignore-not-found
-	kubectl delete -f deploy/operator.yaml --ignore-not-found
-	kubectl delete -f deploy/rbac.yaml --ignore-not-found
-	kubectl delete -f deploy/crd.yaml --ignore-not-found
+	helm uninstall pages --namespace kup6s-pages --ignore-not-found
+
+## Helm
+
+helm-lint:
+	helm lint charts/kup6s-pages
+
+helm-test:
+	helm unittest charts/kup6s-pages
+
+helm-template:
+	helm template pages charts/kup6s-pages
 
 ## Development
 

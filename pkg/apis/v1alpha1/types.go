@@ -42,7 +42,7 @@ type StaticSiteSpec struct {
 	Path string `json:"path,omitempty"`
 
 	// Domain is the custom domain for this site
-	// If empty: <name>.pages.kup6s.io
+	// If empty: <name>.pages.kup6s.com
 	// +optional
 	Domain string `json:"domain,omitempty"`
 

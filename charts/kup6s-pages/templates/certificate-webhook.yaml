@@ -1,0 +1,16 @@
+{{- if .Values.webhook.enabled }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "kup6s-pages.fullname" . }}-webhook-tls
+  namespace: {{ include "kup6s-pages.namespace" . }}
+  labels:
+    {{- include "kup6s-pages.labels" . | nindent 4 }}
+spec:
+  secretName: {{ include "kup6s-pages.fullname" . }}-webhook-tls
+  issuerRef:
+    name: {{ include "kup6s-pages.webhook.clusterIssuer" . }}
+    kind: ClusterIssuer
+  dnsNames:
+    - {{ .Values.webhook.domain }}
+{{- end }}

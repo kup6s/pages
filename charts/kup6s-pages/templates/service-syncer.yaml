@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kup6s-pages.fullname" . }}-syncer
+  namespace: {{ include "kup6s-pages.namespace" . }}
+  labels:
+    {{- include "kup6s-pages.syncer.labels" . | nindent 4 }}
+  {{- with .Values.syncer.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.syncer.service.type }}
+  selector:
+    {{- include "kup6s-pages.syncer.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: webhook
+      port: {{ .Values.syncer.service.port }}
+      targetPort: 8080

@@ -43,7 +43,7 @@ func TestReconcile_NewSite(t *testing.T) {
 		Client:        fakeClient,
 		DynamicClient: &fakeDynamicClient{},
 		Recorder:      record.NewFakeRecorder(10),
-		PagesDomain:   "pages.kup6s.io",
+		PagesDomain:   "pages.kup6s.com",
 		ClusterIssuer: "letsencrypt-prod",
 	}
 
@@ -79,8 +79,8 @@ func TestReconcile_NewSite(t *testing.T) {
 	if updatedSite.Status.Phase != pagesv1.PhaseReady {
 		t.Errorf("Phase = %q, want %q", updatedSite.Status.Phase, pagesv1.PhaseReady)
 	}
-	if updatedSite.Status.URL != "https://test-site.pages.kup6s.io" {
-		t.Errorf("URL = %q, want %q", updatedSite.Status.URL, "https://test-site.pages.kup6s.io")
+	if updatedSite.Status.URL != "https://test-site.pages.kup6s.com" {
+		t.Errorf("URL = %q, want %q", updatedSite.Status.URL, "https://test-site.pages.kup6s.com")
 	}
 }
 
@@ -111,7 +111,7 @@ func TestReconcile_CustomDomain(t *testing.T) {
 		Client:        fakeClient,
 		DynamicClient: &fakeDynamicClient{},
 		Recorder:      record.NewFakeRecorder(10),
-		PagesDomain:   "pages.kup6s.io",
+		PagesDomain:   "pages.kup6s.com",
 		ClusterIssuer: "letsencrypt-prod",
 	}
 
@@ -151,7 +151,7 @@ func TestReconcile_NotFound(t *testing.T) {
 		Client:        fakeClient,
 		DynamicClient: &fakeDynamicClient{},
 		Recorder:      record.NewFakeRecorder(10),
-		PagesDomain:   "pages.kup6s.io",
+		PagesDomain:   "pages.kup6s.com",
 	}
 
 	req := ctrl.Request{
@@ -197,7 +197,7 @@ func TestReconcile_Deletion(t *testing.T) {
 		Client:        fakeClient,
 		DynamicClient: &fakeDynamicClient{},
 		Recorder:      record.NewFakeRecorder(10),
-		PagesDomain:   "pages.kup6s.io",
+		PagesDomain:   "pages.kup6s.com",
 	}
 
 	req := ctrl.Request{
@@ -232,7 +232,7 @@ func TestReconcile_Deletion(t *testing.T) {
 
 func TestDomainGeneration(t *testing.T) {
 	r := &StaticSiteReconciler{
-		PagesDomain: "pages.kup6s.io",
+		PagesDomain: "pages.kup6s.com",
 	}
 
 	tests := []struct {
@@ -251,13 +251,13 @@ func TestDomainGeneration(t *testing.T) {
 			name:       "auto-generated domain",
 			siteName:   "mysite",
 			specDomain: "",
-			wantDomain: "mysite.pages.kup6s.io",
+			wantDomain: "mysite.pages.kup6s.com",
 		},
 		{
 			name:       "site with dashes",
 			siteName:   "my-cool-site",
 			specDomain: "",
-			wantDomain: "my-cool-site.pages.kup6s.io",
+			wantDomain: "my-cool-site.pages.kup6s.com",
 		},
 	}
 
@@ -285,8 +285,8 @@ func TestDomainGeneration(t *testing.T) {
 }
 
 func TestFinalizerName(t *testing.T) {
-	if finalizerName != "pages.kup6s.io/finalizer" {
-		t.Errorf("finalizerName = %q, want %q", finalizerName, "pages.kup6s.io/finalizer")
+	if finalizerName != "pages.kup6s.com/finalizer" {
+		t.Errorf("finalizerName = %q, want %q", finalizerName, "pages.kup6s.com/finalizer")
 	}
 }
 

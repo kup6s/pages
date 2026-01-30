@@ -1,0 +1,39 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kup6s-pages.fullname" . }}-operator
+  labels:
+    {{- include "kup6s-pages.operator.labels" . | nindent 4 }}
+rules:
+  # StaticSite CRD
+  - apiGroups: ["pages.kup6s.com"]
+    resources: ["staticsites"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["pages.kup6s.com"]
+    resources: ["staticsites/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["pages.kup6s.com"]
+    resources: ["staticsites/finalizers"]
+    verbs: ["update"]
+
+  # Traefik IngressRoutes and Middlewares
+  - apiGroups: ["traefik.io"]
+    resources: ["ingressroutes", "middlewares"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # cert-manager Certificates
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Events
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+
+  # Coordination for Leader Election
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+{{- end }}

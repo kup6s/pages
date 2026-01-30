@@ -1,0 +1,73 @@
+suite: operator deployment tests
+templates:
+  - templates/deployment-operator.yaml
+tests:
+  - it: should render with default values
+    asserts:
+      - isKind:
+          of: Deployment
+      - equal:
+          path: spec.replicas
+          value: 1
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/kup6s/pages-operator:0.1.0
+
+  - it: should use custom image tag
+    set:
+      operator.image.tag: v1.0.0
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].image
+          value: ghcr.io/kup6s/pages-operator:v1.0.0
+
+  - it: should set pages domain argument
+    set:
+      operator.pagesDomain: custom.example.com
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --pages-domain=custom.example.com
+
+  - it: should set cluster issuer argument
+    set:
+      operator.clusterIssuer: my-issuer
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --cluster-issuer=my-issuer
+
+  - it: should apply security context
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.allowPrivilegeEscalation
+          value: false
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.readOnlyRootFilesystem
+          value: true
+      - equal:
+          path: spec.template.spec.containers[0].securityContext.runAsNonRoot
+          value: true
+
+  - it: should apply resource limits
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.cpu
+          value: 200m
+      - equal:
+          path: spec.template.spec.containers[0].resources.limits.memory
+          value: 128Mi
+
+  - it: should set custom replicas
+    set:
+      operator.replicas: 2
+    asserts:
+      - equal:
+          path: spec.replicas
+          value: 2
+
+  - it: should include component label
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: operator

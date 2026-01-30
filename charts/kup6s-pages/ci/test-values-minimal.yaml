@@ -1,0 +1,8 @@
+# Minimal production configuration
+operator:
+  pagesDomain: "pages.example.com"
+  clusterIssuer: "letsencrypt-prod"
+
+storage:
+  storageClassName: "longhorn"
+  size: 20Gi

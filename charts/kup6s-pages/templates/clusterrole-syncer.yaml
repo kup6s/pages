@@ -1,0 +1,21 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kup6s-pages.fullname" . }}-syncer
+  labels:
+    {{- include "kup6s-pages.syncer.labels" . | nindent 4 }}
+rules:
+  # StaticSite CRD (read + status update)
+  - apiGroups: ["pages.kup6s.com"]
+    resources: ["staticsites"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["pages.kup6s.com"]
+    resources: ["staticsites/status"]
+    verbs: ["get", "update", "patch"]
+
+  # Secrets for Git credentials
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+{{- end }}

@@ -1,0 +1,328 @@
+# -- Override the chart name
+nameOverride: ""
+# -- Override the full release name
+fullnameOverride: ""
+
+# -- Create namespace (set to false if namespace is managed externally)
+createNamespace: true
+
+# -- Target namespace for deployment
+namespace: "kup6s-pages"
+
+# -- Global image pull secrets
+imagePullSecrets: []
+
+# =============================================================================
+# CRD Configuration
+# =============================================================================
+crds:
+  # -- Install CRD with the chart (use helm install --skip-crds to skip)
+  install: false
+  # -- Keep CRD when chart is uninstalled
+  keep: true
+
+# =============================================================================
+# Operator Configuration
+# =============================================================================
+operator:
+  # -- Number of operator replicas (usually 1 due to leader election)
+  replicas: 1
+
+  image:
+    # -- Operator image registry
+    registry: ghcr.io
+    # -- Operator image repository
+    repository: kup6s/pages-operator
+    # -- Operator image tag (defaults to Chart.appVersion)
+    tag: ""
+    # -- Image pull policy
+    pullPolicy: IfNotPresent
+
+  # -- Pages domain for auto-generated site URLs
+  pagesDomain: "pages.kup6s.com"
+
+  # -- cert-manager ClusterIssuer name for TLS certificates
+  clusterIssuer: "letsencrypt-prod"
+
+  # -- Metrics bind address
+  metricsBindAddress: ":8080"
+
+  # -- Health probe bind address
+  healthProbeBindAddress: ":8081"
+
+  # -- Additional CLI arguments for the operator
+  extraArgs: []
+
+  # -- Pod annotations
+  podAnnotations: {}
+
+  # -- Pod labels
+  podLabels: {}
+
+  # -- Pod security context
+  podSecurityContext: {}
+
+  # -- Container security context
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    capabilities:
+      drop:
+        - ALL
+
+  # -- Resource requests and limits
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 64Mi
+
+  # -- Node selector
+  nodeSelector: {}
+
+  # -- Tolerations
+  tolerations: []
+
+  # -- Affinity rules
+  affinity: {}
+
+  # -- Liveness probe configuration
+  livenessProbe:
+    httpGet:
+      path: /healthz
+      port: 8081
+    initialDelaySeconds: 15
+    periodSeconds: 20
+
+  # -- Readiness probe configuration
+  readinessProbe:
+    httpGet:
+      path: /readyz
+      port: 8081
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+  serviceAccount:
+    # -- Create operator service account
+    create: true
+    # -- Service account name (generated if not set)
+    name: ""
+    # -- Service account annotations
+    annotations: {}
+
+# =============================================================================
+# Syncer Configuration
+# =============================================================================
+syncer:
+  # -- Number of syncer replicas (usually 1 to avoid conflicts)
+  replicas: 1
+
+  image:
+    # -- Syncer image registry
+    registry: ghcr.io
+    # -- Syncer image repository
+    repository: kup6s/pages-syncer
+    # -- Syncer image tag (defaults to Chart.appVersion)
+    tag: ""
+    # -- Image pull policy
+    pullPolicy: IfNotPresent
+
+  # -- Default sync interval for git repositories
+  syncInterval: "5m"
+
+  # -- Webhook server listen address
+  webhookAddr: ":8080"
+
+  # -- Sites root directory (inside the PVC)
+  sitesRoot: "/sites"
+
+  # -- Additional CLI arguments
+  extraArgs: []
+
+  # -- Pod annotations
+  podAnnotations: {}
+
+  # -- Pod labels
+  podLabels: {}
+
+  # -- Pod security context
+  podSecurityContext: {}
+
+  # -- Container security context
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+
+  # -- Resource requests and limits
+  resources:
+    limits:
+      cpu: 500m
+      memory: 256Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+  # -- Node selector
+  nodeSelector: {}
+
+  # -- Tolerations
+  tolerations: []
+
+  # -- Affinity rules
+  affinity: {}
+
+  serviceAccount:
+    # -- Create syncer service account
+    create: true
+    # -- Service account name (generated if not set)
+    name: ""
+    # -- Service account annotations
+    annotations: {}
+
+  service:
+    # -- Service type
+    type: ClusterIP
+    # -- Service port
+    port: 80
+    # -- Service annotations
+    annotations: {}
+
+# =============================================================================
+# nginx Configuration
+# =============================================================================
+nginx:
+  # -- Number of nginx replicas for HA
+  replicas: 2
+
+  image:
+    # -- nginx image registry
+    registry: docker.io
+    # -- nginx image repository
+    repository: library/nginx
+    # -- nginx image tag
+    tag: "1.25-alpine"
+    # -- Image pull policy
+    pullPolicy: IfNotPresent
+
+  # -- Pod annotations
+  podAnnotations: {}
+
+  # -- Pod labels
+  podLabels: {}
+
+  # -- Pod security context
+  podSecurityContext: {}
+
+  # -- Container security context
+  securityContext: {}
+
+  # -- Resource requests and limits
+  resources:
+    limits:
+      cpu: 200m
+      memory: 128Mi
+    requests:
+      cpu: 50m
+      memory: 64Mi
+
+  # -- Node selector
+  nodeSelector: {}
+
+  # -- Tolerations
+  tolerations: []
+
+  # -- Pod anti-affinity for spreading across nodes
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/component: nginx
+            topologyKey: kubernetes.io/hostname
+
+  # -- Liveness probe configuration
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: 80
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+  # -- Readiness probe configuration
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: 80
+    initialDelaySeconds: 2
+    periodSeconds: 5
+
+  service:
+    # -- Service type
+    type: ClusterIP
+    # -- Service port
+    port: 80
+    # -- Service annotations
+    annotations: {}
+
+  # -- Custom nginx configuration (overrides default.conf)
+  customConfig: ""
+
+  # -- PodDisruptionBudget configuration
+  pdb:
+    # -- Enable PodDisruptionBudget
+    enabled: true
+    # -- Minimum available pods
+    minAvailable: 1
+
+# =============================================================================
+# Storage Configuration
+# =============================================================================
+storage:
+  # -- Use existing PVC instead of creating one
+  existingClaim: ""
+
+  # -- Storage class name (empty uses cluster default)
+  storageClassName: ""
+
+  # -- Storage size
+  size: 10Gi
+
+  # -- Access modes
+  accessModes:
+    - ReadWriteMany
+
+  # -- PVC annotations
+  annotations: {}
+
+# =============================================================================
+# Webhook Ingress (Optional)
+# =============================================================================
+webhook:
+  # -- Enable webhook IngressRoute and Certificate
+  enabled: false
+
+  # -- Webhook domain
+  domain: "webhook.pages.kup6s.com"
+
+  # -- ClusterIssuer name for webhook TLS certificate
+  # Defaults to operator.clusterIssuer if not set
+  clusterIssuer: ""
+
+  # -- Traefik entrypoints
+  entryPoints:
+    - websecure
+
+  # -- Additional IngressRoute annotations
+  annotations: {}
+
+# =============================================================================
+# RBAC Configuration
+# =============================================================================
+rbac:
+  # -- Create ClusterRole and ClusterRoleBinding resources
+  create: true
