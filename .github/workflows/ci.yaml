@@ -16,9 +16,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
-
-      - name: Download dependencies
-        run: go mod download
+          cache: true
 
       - name: Run tests
         run: go test -v -race ./...
@@ -43,6 +41,9 @@ jobs:
 
   helm-test:
     runs-on: ubuntu-latest
+    env:
+      HELM_PLUGINS: ${{ github.workspace }}/.helm/plugins
+      KUBECONFORM_VERSION: v0.6.7
     steps:
       - uses: actions/checkout@v4
 
@@ -52,16 +53,33 @@ jobs:
       - name: Helm lint
         run: helm lint charts/kup6s-pages
 
+      - name: Cache Helm plugins
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.HELM_PLUGINS }}
+          key: helm-plugins-unittest-${{ runner.os }}
+
       - name: Install helm-unittest
-        run: helm plugin install --verify=false https://github.com/helm-unittest/helm-unittest.git
+        run: |
+          if [ ! -d "$HELM_PLUGINS/unittest" ]; then
+            helm plugin install --verify=false https://github.com/helm-unittest/helm-unittest.git
+          fi
 
       - name: Run unit tests
         run: helm unittest charts/kup6s-pages
 
+      - name: Cache kubeconform
+        uses: actions/cache@v4
+        with:
+          path: /usr/local/bin/kubeconform
+          key: kubeconform-${{ env.KUBECONFORM_VERSION }}-${{ runner.os }}
+
       - name: Install kubeconform
         run: |
-          curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
-          sudo mv kubeconform /usr/local/bin/
+          if [ ! -f /usr/local/bin/kubeconform ]; then
+            curl -sL "https://github.com/yannh/kubeconform/releases/download/$KUBECONFORM_VERSION/kubeconform-linux-amd64.tar.gz" | tar xz
+            sudo mv kubeconform /usr/local/bin/
+          fi
 
       - name: Validate generated manifests
         run: |
