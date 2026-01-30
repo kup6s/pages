@@ -1,0 +1,92 @@
+---
+# Beispiel: Namespace für User-Sites
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: pages
+
+---
+# Beispiel: Einfache statische Site
+apiVersion: pages.kup6s.io/v1alpha1
+kind: StaticSite
+metadata:
+  name: demo-website
+  namespace: pages
+spec:
+  repo: https://forgejo.kup6s.io/demo/website.git
+  branch: main
+  domain: demo.example.com
+
+---
+# Beispiel: Site mit Build-Output Subpfad
+apiVersion: pages.kup6s.io/v1alpha1
+kind: StaticSite
+metadata:
+  name: docs-site
+  namespace: pages
+spec:
+  repo: https://forgejo.kup6s.io/projekt/docs.git
+  branch: main
+  path: /dist  # z.B. Vitepress Output
+
+---
+# Beispiel: Private Repo mit Credentials
+apiVersion: pages.kup6s.io/v1alpha1
+kind: StaticSite
+metadata:
+  name: internal-docs
+  namespace: pages
+spec:
+  repo: https://forgejo.kup6s.io/internal/docs.git
+  branch: main
+  domain: docs.internal.example.com
+  secretRef:
+    name: forgejo-token
+    key: password
+
+---
+# Secret für private Repos (Base64 encoded)
+# echo -n "dein-token" | base64
+apiVersion: v1
+kind: Secret
+metadata:
+  name: forgejo-token
+  namespace: pages
+type: Opaque
+data:
+  password: ZGVpbi10b2tlbg==  # "dein-token"
+
+---
+# IngressRoute für Webhook Endpoint
+# Damit Forgejo den Syncer direkt erreichen kann
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: pages-webhook
+  namespace: kup6s-pages
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`webhook.pages.kup6s.io`)
+      kind: Rule
+      services:
+        - name: pages-syncer
+          port: 80
+  tls:
+    secretName: pages-webhook-tls
+
+---
+# Certificate für Webhook
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: pages-webhook-tls
+  namespace: kup6s-pages
+spec:
+  secretName: pages-webhook-tls
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+  dnsNames:
+    - webhook.pages.kup6s.io

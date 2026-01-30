@@ -1,0 +1,118 @@
+---
+# CustomResourceDefinition für StaticSite
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: staticsites.pages.kup6s.io
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+spec:
+  group: pages.kup6s.io
+  names:
+    kind: StaticSite
+    listKind: StaticSiteList
+    plural: staticsites
+    singular: staticsite
+    shortNames:
+      - ss
+      - site
+  scope: Namespaced
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            apiVersion:
+              type: string
+            kind:
+              type: string
+            metadata:
+              type: object
+            spec:
+              type: object
+              required:
+                - repo
+              properties:
+                repo:
+                  type: string
+                  description: Git Repository URL
+                  pattern: '^https?://.*'
+                branch:
+                  type: string
+                  description: Git Branch
+                  default: main
+                path:
+                  type: string
+                  description: Subpath im Repository
+                  default: /
+                domain:
+                  type: string
+                  description: Custom Domain
+                secretRef:
+                  type: object
+                  description: Secret mit Git Credentials
+                  properties:
+                    name:
+                      type: string
+                    key:
+                      type: string
+                      default: password
+                  required:
+                    - name
+                syncInterval:
+                  type: string
+                  description: Sync Intervall
+                  default: 5m
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum: [Pending, Syncing, Ready, Error]
+                message:
+                  type: string
+                lastSync:
+                  type: string
+                  format: date-time
+                lastCommit:
+                  type: string
+                url:
+                  type: string
+                conditions:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      status:
+                        type: string
+                      lastTransitionTime:
+                        type: string
+                        format: date-time
+                      reason:
+                        type: string
+                      message:
+                        type: string
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Domain
+          type: string
+          jsonPath: .spec.domain
+        - name: Repo
+          type: string
+          jsonPath: .spec.repo
+          priority: 1
+        - name: Status
+          type: string
+          jsonPath: .status.phase
+        - name: Last Sync
+          type: date
+          jsonPath: .status.lastSync
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp

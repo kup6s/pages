@@ -1,0 +1,201 @@
+---
+# PVC für die Sites
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: static-sites-data
+  namespace: kup6s-pages
+spec:
+  accessModes:
+    - ReadWriteMany  # Wichtig: RWX damit beide Pods zugreifen können
+  resources:
+    requests:
+      storage: 10Gi
+  # storageClassName: longhorn  # Anpassen an deinen Cluster
+
+---
+# Syncer Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pages-syncer
+  namespace: kup6s-pages
+  labels:
+    app: pages-syncer
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: pages-syncer
+  template:
+    metadata:
+      labels:
+        app: pages-syncer
+    spec:
+      serviceAccountName: pages-syncer
+      containers:
+        - name: syncer
+          image: ghcr.io/kleinundpartner/kup6s-pages-syncer:latest
+          imagePullPolicy: Always
+          args:
+            - --sites-root=/sites
+            - --sync-interval=5m
+            - --webhook-addr=:8080
+          ports:
+            - name: webhook
+              containerPort: 8080
+              protocol: TCP
+          volumeMounts:
+            - name: sites
+              mountPath: /sites
+          resources:
+            limits:
+              cpu: 500m
+              memory: 256Mi
+            requests:
+              cpu: 100m
+              memory: 128Mi
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+      volumes:
+        - name: sites
+          persistentVolumeClaim:
+            claimName: static-sites-data
+
+---
+# Syncer Service (für Webhooks)
+apiVersion: v1
+kind: Service
+metadata:
+  name: pages-syncer
+  namespace: kup6s-pages
+spec:
+  selector:
+    app: pages-syncer
+  ports:
+    - name: webhook
+      port: 80
+      targetPort: 8080
+
+---
+# nginx Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: static-sites-nginx
+  namespace: kup6s-pages
+  labels:
+    app: static-sites-nginx
+spec:
+  replicas: 2  # Für HA
+  selector:
+    matchLabels:
+      app: static-sites-nginx
+  template:
+    metadata:
+      labels:
+        app: static-sites-nginx
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:1.25-alpine
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
+          volumeMounts:
+            - name: sites
+              mountPath: /sites
+              readOnly: true
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d
+          resources:
+            limits:
+              cpu: 200m
+              memory: 128Mi
+            requests:
+              cpu: 50m
+              memory: 64Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 80
+            initialDelaySeconds: 2
+            periodSeconds: 5
+      volumes:
+        - name: sites
+          persistentVolumeClaim:
+            claimName: static-sites-data
+        - name: nginx-config
+          configMap:
+            name: nginx-config
+
+---
+# nginx ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: kup6s-pages
+data:
+  default.conf: |
+    server {
+        listen 80;
+        server_name _;
+        
+        # Health Check Endpoint
+        location /health {
+            access_log off;
+            return 200 "ok\n";
+            add_header Content-Type text/plain;
+        }
+        
+        # Alle Sites aus /sites servieren
+        # Traefik macht den addPrefix, also:
+        # Request: www.kunde.at/about.html
+        # Traefik: addPrefix /kunde-website
+        # nginx sieht: /kunde-website/about.html
+        # Served: /sites/kunde-website/about.html
+        
+        root /sites;
+        
+        location / {
+            # Versuche Datei, dann Verzeichnis, dann index.html
+            try_files $uri $uri/ $uri/index.html =404;
+            
+            # Caching für statische Assets
+            location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {
+                expires 1y;
+                add_header Cache-Control "public, immutable";
+            }
+        }
+        
+        # Custom 404 Page (falls vorhanden)
+        error_page 404 /404.html;
+        
+        # Gzip
+        gzip on;
+        gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
+    }
+
+---
+# nginx Service (wird von IngressRoutes referenziert)
+apiVersion: v1
+kind: Service
+metadata:
+  name: static-sites-nginx
+  namespace: kup6s-pages
+spec:
+  selector:
+    app: static-sites-nginx
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80

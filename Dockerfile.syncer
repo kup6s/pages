@@ -1,0 +1,27 @@
+# Build Stage
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /app
+
+# Dependencies cachen
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Source kopieren und bauen
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -o syncer ./cmd/syncer
+
+# Runtime Stage
+# Alpine statt distroless weil wir Git brauchen
+FROM alpine:3.19
+
+RUN apk add --no-cache git ca-certificates && \
+    adduser -D -u 1000 syncer
+
+WORKDIR /
+
+COPY --from=builder /app/syncer .
+
+USER syncer
+
+ENTRYPOINT ["/syncer"]

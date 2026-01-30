@@ -1,0 +1,109 @@
+---
+# Namespace für das System
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kup6s-pages
+
+---
+# ServiceAccount für Operator
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pages-operator
+  namespace: kup6s-pages
+
+---
+# ServiceAccount für Syncer
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pages-syncer
+  namespace: kup6s-pages
+
+---
+# ClusterRole für Operator
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pages-operator
+rules:
+  # StaticSite CRD
+  - apiGroups: ["pages.kup6s.io"]
+    resources: ["staticsites"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["pages.kup6s.io"]
+    resources: ["staticsites/status"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: ["pages.kup6s.io"]
+    resources: ["staticsites/finalizers"]
+    verbs: ["update"]
+
+  # Traefik IngressRoutes und Middlewares
+  - apiGroups: ["traefik.io"]
+    resources: ["ingressroutes", "middlewares"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # cert-manager Certificates
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Events
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["create", "patch"]
+
+  # Coordination für Leader Election
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+---
+# ClusterRole für Syncer
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: pages-syncer
+rules:
+  # StaticSite CRD (read + status update)
+  - apiGroups: ["pages.kup6s.io"]
+    resources: ["staticsites"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["pages.kup6s.io"]
+    resources: ["staticsites/status"]
+    verbs: ["get", "update", "patch"]
+
+  # Secrets für Git Credentials
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+
+---
+# ClusterRoleBindings
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pages-operator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pages-operator
+subjects:
+  - kind: ServiceAccount
+    name: pages-operator
+    namespace: kup6s-pages
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: pages-syncer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: pages-syncer
+subjects:
+  - kind: ServiceAccount
+    name: pages-syncer
+    namespace: kup6s-pages
