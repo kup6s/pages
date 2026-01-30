@@ -6,6 +6,7 @@ import (
 	"flag"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -14,17 +15,21 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
-	"github.com/kleinundpartner/kup6s-pages/pkg/syncer"
+	"github.com/kup6s/pages/pkg/syncer"
 )
 
 func main() {
 	var sitesRoot string
 	var syncInterval time.Duration
 	var webhookAddr string
+	var webhookSecret string
+	var allowedHosts string
 
 	flag.StringVar(&sitesRoot, "sites-root", "/sites", "Root directory for synced sites")
 	flag.DurationVar(&syncInterval, "sync-interval", 5*time.Minute, "Interval between full syncs")
 	flag.StringVar(&webhookAddr, "webhook-addr", ":8080", "Address for webhook HTTP server")
+	flag.StringVar(&webhookSecret, "webhook-secret", "", "Secret for webhook signature validation")
+	flag.StringVar(&allowedHosts, "allowed-hosts", "", "Comma-separated list of allowed Git hosts (SSRF protection)")
 
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
@@ -54,17 +59,30 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Allowed Hosts parsen
+	var hosts []string
+	if allowedHosts != "" {
+		for _, h := range strings.Split(allowedHosts, ",") {
+			h = strings.TrimSpace(h)
+			if h != "" {
+				hosts = append(hosts, h)
+			}
+		}
+	}
+
 	// Syncer erstellen
 	s := &syncer.Syncer{
 		DynamicClient:   dynamicClient,
 		ClientSet:       clientset,
 		SitesRoot:       sitesRoot,
 		DefaultInterval: syncInterval,
+		AllowedHosts:    hosts,
 	}
 
 	// Webhook Server erstellen
 	webhookServer := &syncer.WebhookServer{
-		Syncer: s,
+		Syncer:        s,
+		WebhookSecret: webhookSecret,
 	}
 
 	// Context mit Cancellation

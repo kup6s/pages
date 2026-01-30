@@ -12,9 +12,10 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	pagesv1 "github.com/kleinundpartner/kup6s-pages/pkg/apis/v1alpha1"
-	"github.com/kleinundpartner/kup6s-pages/pkg/controller"
+	pagesv1 "github.com/kup6s/pages/pkg/apis/v1alpha1"
+	"github.com/kup6s/pages/pkg/controller"
 )
 
 var (
@@ -47,7 +48,7 @@ func main() {
 	// Manager erstellen
 	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
 		Scheme:                 scheme,
-		MetricsBindAddress:     metricsAddr,
+		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         true,
 		LeaderElectionID:       "kup6s-pages-operator",
