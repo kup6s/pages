@@ -15,6 +15,7 @@ kup6s-pages deploys static websites from Git repositories to Kubernetes. A singl
 - Webhook support for instant updates on push
 - Private repository support via deploy tokens
 - Subpath support for build outputs (e.g., `/dist`)
+- Path prefix support for multiple repos on same domain
 
 ## Architecture
 
@@ -192,6 +193,38 @@ spec:
   # No domain specified → https://my-project.pages.kup6s.com
 ```
 
+### Multiple Sites on Same Domain (Path Prefix)
+
+Serve multiple repositories under different paths of the same domain:
+
+```yaml
+apiVersion: pages.kup6s.com/v1alpha1
+kind: StaticSite
+metadata:
+  name: archive-2019
+  namespace: pages
+spec:
+  repo: https://github.com/org/archive-2019.git
+  domain: www.example.com
+  pathPrefix: /2019
+---
+apiVersion: pages.kup6s.com/v1alpha1
+kind: StaticSite
+metadata:
+  name: archive-2020
+  namespace: pages
+spec:
+  repo: https://github.com/org/archive-2020.git
+  domain: www.example.com
+  pathPrefix: /2020
+```
+
+Both sites share the same TLS certificate. Requests to:
+- `https://www.example.com/2019/` → served from archive-2019 repo
+- `https://www.example.com/2020/` → served from archive-2020 repo
+
+**Note:** `pathPrefix` requires a custom `domain` to be set.
+
 ## CRD Reference
 
 ### StaticSite Spec
@@ -201,6 +234,7 @@ spec:
 | `repo` | string | Yes | - | Git repository URL (HTTPS) |
 | `branch` | string | No | `main` | Git branch to track |
 | `path` | string | No | `/` | Subpath in repo to serve |
+| `pathPrefix` | string | No | - | URL path prefix (requires domain) |
 | `domain` | string | No | `<name>.<pages-domain>` | Custom domain |
 | `secretRef.name` | string | No | - | Secret name with Git credentials |
 | `secretRef.key` | string | No | `password` | Key in Secret for the token |

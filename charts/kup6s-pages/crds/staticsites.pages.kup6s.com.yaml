@@ -49,6 +49,10 @@ spec:
                   type: string
                   description: Subpath in the repository
                   default: /
+                pathPrefix:
+                  type: string
+                  description: URL path prefix (e.g., /2019). Requires custom domain.
+                  pattern: '^(/[a-zA-Z0-9._-]+)*$'
                 domain:
                   type: string
                   description: Custom Domain
@@ -104,6 +108,10 @@ spec:
         - name: Domain
           type: string
           jsonPath: .spec.domain
+        - name: PathPrefix
+          type: string
+          jsonPath: .spec.pathPrefix
+          priority: 1
         - name: Repo
           type: string
           jsonPath: .spec.repo

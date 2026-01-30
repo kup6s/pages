@@ -363,3 +363,202 @@ type notFoundError struct{}
 
 func (e *notFoundError) Error() string   { return "not found" }
 func (e *notFoundError) Status() metav1.Status { return metav1.Status{Reason: metav1.StatusReasonNotFound} }
+
+func TestValidatePathPrefix(t *testing.T) {
+	tests := []struct {
+		name       string
+		domain     string
+		pathPrefix string
+		wantErr    bool
+	}{
+		{
+			name:       "empty prefix is valid",
+			domain:     "example.com",
+			pathPrefix: "",
+			wantErr:    false,
+		},
+		{
+			name:       "valid prefix",
+			domain:     "example.com",
+			pathPrefix: "/2019",
+			wantErr:    false,
+		},
+		{
+			name:       "nested prefix",
+			domain:     "example.com",
+			pathPrefix: "/archive/2019",
+			wantErr:    false,
+		},
+		{
+			name:       "prefix requires domain",
+			domain:     "",
+			pathPrefix: "/2019",
+			wantErr:    true,
+		},
+		{
+			name:       "just slash is invalid",
+			domain:     "example.com",
+			pathPrefix: "/",
+			wantErr:    true,
+		},
+		{
+			name:       "missing leading slash",
+			domain:     "example.com",
+			pathPrefix: "2019",
+			wantErr:    true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			site := &pagesv1.StaticSite{
+				Spec: pagesv1.StaticSiteSpec{
+					Domain:     tt.domain,
+					PathPrefix: tt.pathPrefix,
+				},
+			}
+			err := validatePathPrefix(site)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validatePathPrefix() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestSanitizeDomainForResourceName(t *testing.T) {
+	tests := []struct {
+		domain string
+		want   string
+	}{
+		{"example.com", "example-com"},
+		{"www.example.com", "www-example-com"},
+		{"sub.domain.example.com", "sub-domain-example-com"},
+		{"EXAMPLE.COM", "example-com"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.domain, func(t *testing.T) {
+			got := sanitizeDomainForResourceName(tt.domain)
+			if got != tt.want {
+				t.Errorf("sanitizeDomainForResourceName(%q) = %q, want %q", tt.domain, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestReconcile_PathPrefix(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	site := &pagesv1.StaticSite{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "archive-2019",
+			Namespace:  "default",
+			UID:        "test-uid-path",
+			Finalizers: []string{finalizerName},
+		},
+		Spec: pagesv1.StaticSiteSpec{
+			Repo:       "https://github.com/example/archive.git",
+			Domain:     "www.example.com",
+			PathPrefix: "/2019",
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(site).
+		WithStatusSubresource(site).
+		Build()
+
+	r := &StaticSiteReconciler{
+		Client:        fakeClient,
+		DynamicClient: &fakeDynamicClient{},
+		Recorder:      record.NewFakeRecorder(10),
+		PagesDomain:   "pages.kup6s.com",
+		ClusterIssuer: "letsencrypt-prod",
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "archive-2019",
+			Namespace: "default",
+		},
+	}
+
+	_, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	updatedSite := &pagesv1.StaticSite{}
+	err = fakeClient.Get(context.Background(), req.NamespacedName, updatedSite)
+	if err != nil {
+		t.Fatalf("failed to get site: %v", err)
+	}
+
+	// URL should include pathPrefix
+	wantURL := "https://www.example.com/2019"
+	if updatedSite.Status.URL != wantURL {
+		t.Errorf("URL = %q, want %q", updatedSite.Status.URL, wantURL)
+	}
+
+	if updatedSite.Status.Phase != pagesv1.PhaseReady {
+		t.Errorf("Phase = %q, want %q", updatedSite.Status.Phase, pagesv1.PhaseReady)
+	}
+}
+
+func TestReconcile_PathPrefixValidationFails(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	// PathPrefix without domain should fail validation
+	site := &pagesv1.StaticSite{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "invalid-site",
+			Namespace:  "default",
+			UID:        "test-uid-invalid",
+			Finalizers: []string{finalizerName},
+		},
+		Spec: pagesv1.StaticSiteSpec{
+			Repo:       "https://github.com/example/repo.git",
+			PathPrefix: "/2019", // PathPrefix without Domain
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(site).
+		WithStatusSubresource(site).
+		Build()
+
+	r := &StaticSiteReconciler{
+		Client:        fakeClient,
+		DynamicClient: &fakeDynamicClient{},
+		Recorder:      record.NewFakeRecorder(10),
+		PagesDomain:   "pages.kup6s.com",
+		ClusterIssuer: "letsencrypt-prod",
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "invalid-site",
+			Namespace: "default",
+		},
+	}
+
+	_, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v, want nil (error in status)", err)
+	}
+
+	updatedSite := &pagesv1.StaticSite{}
+	err = fakeClient.Get(context.Background(), req.NamespacedName, updatedSite)
+	if err != nil {
+		t.Fatalf("failed to get site: %v", err)
+	}
+
+	// Should be in Error phase
+	if updatedSite.Status.Phase != pagesv1.PhaseError {
+		t.Errorf("Phase = %q, want %q", updatedSite.Status.Phase, pagesv1.PhaseError)
+	}
+}

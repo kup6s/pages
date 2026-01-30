@@ -10,6 +10,7 @@ import (
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Domain",type=string,JSONPath=`.spec.domain`
+// +kubebuilder:printcolumn:name="PathPrefix",type=string,JSONPath=`.spec.pathPrefix`,priority=1
 // +kubebuilder:printcolumn:name="Repo",type=string,JSONPath=`.spec.repo`
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.phase`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
@@ -40,6 +41,13 @@ type StaticSiteSpec struct {
 	// +kubebuilder:default=/
 	// +optional
 	Path string `json:"path,omitempty"`
+
+	// PathPrefix is the URL path prefix for this site (e.g., "/2019")
+	// Multiple sites can share a domain with different path prefixes
+	// Requires Domain to be set (cannot use with auto-generated subdomain)
+	// +kubebuilder:validation:Pattern=`^(/[a-zA-Z0-9._-]+)*$`
+	// +optional
+	PathPrefix string `json:"pathPrefix,omitempty"`
 
 	// Domain is the custom domain for this site
 	// If empty: <name>.pages.kup6s.com
