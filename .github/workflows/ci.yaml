@@ -61,7 +61,7 @@ jobs:
 
       - name: Install helm-unittest
         run: |
-          if [ ! -d "$HELM_PLUGINS/unittest" ]; then
+          if ! helm plugin list | grep -q unittest; then
             helm plugin install --verify=false https://github.com/helm-unittest/helm-unittest.git
           fi
 
