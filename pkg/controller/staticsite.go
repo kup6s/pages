@@ -23,10 +23,9 @@ import (
 
 const (
 	finalizerName = "pages.kup6s.com/finalizer"
-	
+
 	// nginx Service name in the system namespace
 	nginxServiceName = "static-sites-nginx"
-	nginxNamespace   = "kup6s-pages"
 )
 
 // StaticSiteReconciler reconciles StaticSite resources
@@ -36,8 +35,9 @@ type StaticSiteReconciler struct {
 	Recorder      record.EventRecorder
 
 	// Config
-	PagesDomain   string // e.g. "pages.kup6s.com"
-	ClusterIssuer string // e.g. "letsencrypt-prod"
+	PagesDomain    string // e.g. "pages.kup6s.com"
+	ClusterIssuer  string // e.g. "letsencrypt-prod"
+	NginxNamespace string // namespace where nginx service runs
 }
 
 // GVRs for Traefik and cert-manager
@@ -346,7 +346,7 @@ func (r *StaticSiteReconciler) reconcileIngressRoute(ctx context.Context, site *
 						"services": []interface{}{
 							map[string]interface{}{
 								"name":      nginxServiceName,
-								"namespace": nginxNamespace,
+								"namespace": r.NginxNamespace,
 								"port":      80,
 							},
 						},

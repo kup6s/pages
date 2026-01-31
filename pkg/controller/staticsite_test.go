@@ -294,9 +294,6 @@ func TestNginxServiceConfig(t *testing.T) {
 	if nginxServiceName != "static-sites-nginx" {
 		t.Errorf("nginxServiceName = %q, want %q", nginxServiceName, "static-sites-nginx")
 	}
-	if nginxNamespace != "kup6s-pages" {
-		t.Errorf("nginxNamespace = %q, want %q", nginxNamespace, "kup6s-pages")
-	}
 }
 
 // fakeDynamicClient für Controller-Tests
