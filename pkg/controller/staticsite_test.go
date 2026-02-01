@@ -40,11 +40,13 @@ func TestReconcile_NewSite(t *testing.T) {
 		Build()
 
 	r := &StaticSiteReconciler{
-		Client:        fakeClient,
-		DynamicClient: &fakeDynamicClient{},
-		Recorder:      record.NewFakeRecorder(10),
-		PagesDomain:   "pages.kup6s.com",
-		ClusterIssuer: "letsencrypt-prod",
+		Client:           fakeClient,
+		DynamicClient:    &fakeDynamicClient{},
+		Recorder:         record.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		ClusterIssuer:    "letsencrypt-prod",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
 	}
 
 	req := ctrl.Request{
@@ -108,11 +110,13 @@ func TestReconcile_CustomDomain(t *testing.T) {
 		Build()
 
 	r := &StaticSiteReconciler{
-		Client:        fakeClient,
-		DynamicClient: &fakeDynamicClient{},
-		Recorder:      record.NewFakeRecorder(10),
-		PagesDomain:   "pages.kup6s.com",
-		ClusterIssuer: "letsencrypt-prod",
+		Client:           fakeClient,
+		DynamicClient:    &fakeDynamicClient{},
+		Recorder:         record.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		ClusterIssuer:    "letsencrypt-prod",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
 	}
 
 	req := ctrl.Request{
@@ -148,10 +152,12 @@ func TestReconcile_NotFound(t *testing.T) {
 		Build()
 
 	r := &StaticSiteReconciler{
-		Client:        fakeClient,
-		DynamicClient: &fakeDynamicClient{},
-		Recorder:      record.NewFakeRecorder(10),
-		PagesDomain:   "pages.kup6s.com",
+		Client:           fakeClient,
+		DynamicClient:    &fakeDynamicClient{},
+		Recorder:         record.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
 	}
 
 	req := ctrl.Request{
@@ -194,10 +200,12 @@ func TestReconcile_Deletion(t *testing.T) {
 		Build()
 
 	r := &StaticSiteReconciler{
-		Client:        fakeClient,
-		DynamicClient: &fakeDynamicClient{},
-		Recorder:      record.NewFakeRecorder(10),
-		PagesDomain:   "pages.kup6s.com",
+		Client:           fakeClient,
+		DynamicClient:    &fakeDynamicClient{},
+		Recorder:         record.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
 	}
 
 	req := ctrl.Request{
@@ -290,9 +298,9 @@ func TestFinalizerName(t *testing.T) {
 	}
 }
 
-func TestNginxServiceConfig(t *testing.T) {
-	if nginxServiceName != "static-sites-nginx" {
-		t.Errorf("nginxServiceName = %q, want %q", nginxServiceName, "static-sites-nginx")
+func TestNginxProxyServiceName(t *testing.T) {
+	if nginxProxyServiceName != "pages-nginx-proxy" {
+		t.Errorf("nginxProxyServiceName = %q, want %q", nginxProxyServiceName, "pages-nginx-proxy")
 	}
 }
 
@@ -468,11 +476,13 @@ func TestReconcile_PathPrefix(t *testing.T) {
 		Build()
 
 	r := &StaticSiteReconciler{
-		Client:        fakeClient,
-		DynamicClient: &fakeDynamicClient{},
-		Recorder:      record.NewFakeRecorder(10),
-		PagesDomain:   "pages.kup6s.com",
-		ClusterIssuer: "letsencrypt-prod",
+		Client:           fakeClient,
+		DynamicClient:    &fakeDynamicClient{},
+		Recorder:         record.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		ClusterIssuer:    "letsencrypt-prod",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
 	}
 
 	req := ctrl.Request{
@@ -529,11 +539,13 @@ func TestReconcile_PathPrefixValidationFails(t *testing.T) {
 		Build()
 
 	r := &StaticSiteReconciler{
-		Client:        fakeClient,
-		DynamicClient: &fakeDynamicClient{},
-		Recorder:      record.NewFakeRecorder(10),
-		PagesDomain:   "pages.kup6s.com",
-		ClusterIssuer: "letsencrypt-prod",
+		Client:           fakeClient,
+		DynamicClient:    &fakeDynamicClient{},
+		Recorder:         record.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		ClusterIssuer:    "letsencrypt-prod",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
 	}
 
 	req := ctrl.Request{

@@ -312,6 +312,8 @@ The operator accepts these flags:
 |------|---------|-------------|
 | `--pages-domain` | `pages.kup6s.com` | Base domain for auto-generated subdomains |
 | `--cluster-issuer` | `letsencrypt-prod` | cert-manager ClusterIssuer name |
+| `--nginx-namespace` | `kup6s-pages` | Namespace where nginx service runs |
+| `--nginx-service-name` | `kup6s-pages-nginx` | Name of the nginx service |
 | `--metrics-bind-address` | `:8080` | Metrics endpoint |
 | `--health-probe-bind-address` | `:8081` | Health probe endpoint |
 

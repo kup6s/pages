@@ -34,12 +34,14 @@ func main() {
 	var pagesDomain string
 	var clusterIssuer string
 	var nginxNamespace string
+	var nginxServiceName string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address for metrics endpoint")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address for health probes")
 	flag.StringVar(&pagesDomain, "pages-domain", "pages.kup6s.com", "Base domain for auto-generated URLs")
 	flag.StringVar(&clusterIssuer, "cluster-issuer", "letsencrypt-prod", "cert-manager ClusterIssuer name")
 	flag.StringVar(&nginxNamespace, "nginx-namespace", "kup6s-pages", "Namespace where nginx service runs")
+	flag.StringVar(&nginxServiceName, "nginx-service-name", "kup6s-pages-nginx", "Name of the nginx service in the system namespace")
 	
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
@@ -69,12 +71,13 @@ func main() {
 
 	// Register controller
 	if err = (&controller.StaticSiteReconciler{
-		Client:         mgr.GetClient(),
-		DynamicClient:  dynamicClient,
-		Recorder:       mgr.GetEventRecorderFor("staticsite-controller"),
-		PagesDomain:    pagesDomain,
-		ClusterIssuer:  clusterIssuer,
-		NginxNamespace: nginxNamespace,
+		Client:           mgr.GetClient(),
+		DynamicClient:    dynamicClient,
+		Recorder:         mgr.GetEventRecorderFor("staticsite-controller"),
+		PagesDomain:      pagesDomain,
+		ClusterIssuer:    clusterIssuer,
+		NginxNamespace:   nginxNamespace,
+		NginxServiceName: nginxServiceName,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "StaticSite")
 		os.Exit(1)
