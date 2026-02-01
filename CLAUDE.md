@@ -52,6 +52,8 @@ helm install pages oci://ghcr.io/kup6s/kup6s-pages
 - go-git v5.12
 - Requires: Traefik, cert-manager, RWX StorageClass
 
-# Commits
+# Issues/ Commits
 
 Do not mention AI/Claude.
+
+Always create a branch with worktree under `./.worktrees` in the project and PR if ready.
