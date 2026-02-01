@@ -158,8 +158,13 @@ func (s *Syncer) syncSite(ctx context.Context, site *staticSiteData) error {
 		if err != nil {
 			return fmt.Errorf("failed to get git credentials: %w", err)
 		}
+		// Get username from secret, default to "git" if not present
+		username, _ := s.getSecretValue(ctx, site.Namespace, site.SecretRef.Name, "username")
+		if username == "" {
+			username = "git"
+		}
 		auth = &http.BasicAuth{
-			Username: "git", // Username doesn't matter for tokens
+			Username: username,
 			Password: password,
 		}
 	}
