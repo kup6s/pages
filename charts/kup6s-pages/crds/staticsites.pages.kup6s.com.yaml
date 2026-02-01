@@ -102,6 +102,9 @@ spec:
                         type: string
                       message:
                         type: string
+                syncToken:
+                  type: string
+                  description: Token for authenticating /sync and /site API calls
       subresources:
         status: {}
       additionalPrinterColumns:

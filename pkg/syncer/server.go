@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -40,9 +42,13 @@ func (w *WebhookServer) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		fmt.Fprint(rw, "ok")
 
 	case r.Method == "POST" && len(parts) == 3 && parts[0] == "sync":
-		// POST /sync/{namespace}/{name}
+		// POST /sync/{namespace}/{name} - requires X-API-Key
 		namespace := parts[1]
 		name := parts[2]
+		if !w.validateSiteToken(ctx, r, namespace, name) {
+			http.Error(rw, "unauthorized", http.StatusUnauthorized)
+			return
+		}
 		w.handleSync(ctx, rw, r, namespace, name)
 
 	case r.Method == "POST" && path == "webhook/forgejo":
@@ -53,10 +59,15 @@ func (w *WebhookServer) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		// GitHub Webhook
 		w.handleGitHubWebhook(ctx, rw, r)
 
-	case r.Method == "DELETE" && len(parts) == 2 && parts[0] == "site":
-		// DELETE /site/{name} - Deletes site directories
-		name := parts[1]
-		w.handleDelete(ctx, rw, name)
+	case r.Method == "DELETE" && len(parts) == 3 && parts[0] == "site":
+		// DELETE /site/{namespace}/{name} - requires X-API-Key
+		namespace := parts[1]
+		name := parts[2]
+		if !w.validateSiteToken(ctx, r, namespace, name) {
+			http.Error(rw, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.handleDelete(ctx, rw, namespace, name)
 
 	default:
 		http.NotFound(rw, r)
@@ -79,18 +90,43 @@ func (w *WebhookServer) handleSync(ctx context.Context, rw http.ResponseWriter, 
 }
 
 // handleDelete deletes the files of a site
-func (w *WebhookServer) handleDelete(ctx context.Context, rw http.ResponseWriter, name string) {
+func (w *WebhookServer) handleDelete(ctx context.Context, rw http.ResponseWriter, namespace, name string) {
 	logger := log.FromContext(ctx)
-	logger.Info("Delete triggered", "name", name)
+	logger.Info("Delete triggered", "namespace", namespace, "name", name)
 
 	if err := w.Syncer.DeleteSite(ctx, name); err != nil {
-		logger.Error(err, "Delete failed", "name", name)
+		logger.Error(err, "Delete failed", "namespace", namespace, "name", name)
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	rw.WriteHeader(http.StatusOK)
-	fmt.Fprintf(rw, "Deleted %s", name)
+	fmt.Fprintf(rw, "Deleted %s/%s", namespace, name)
+}
+
+// getSiteToken fetches the syncToken from a StaticSite's status
+func (w *WebhookServer) getSiteToken(ctx context.Context, namespace, name string) (string, error) {
+	obj, err := w.Syncer.DynamicClient.Resource(staticSiteGVR).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return "", err
+	}
+	token, _, _ := unstructured.NestedString(obj.Object, "status", "syncToken")
+	return token, nil
+}
+
+// validateSiteToken validates the X-API-Key header against the site's syncToken
+func (w *WebhookServer) validateSiteToken(ctx context.Context, r *http.Request, namespace, name string) bool {
+	token := r.Header.Get("X-API-Key")
+	if token == "" {
+		return false
+	}
+
+	expectedToken, err := w.getSiteToken(ctx, namespace, name)
+	if err != nil || expectedToken == "" {
+		return false
+	}
+
+	return subtle.ConstantTimeCompare([]byte(token), []byte(expectedToken)) == 1
 }
 
 // validateWebhookSignature validates the HMAC-SHA256 signature of a webhook
