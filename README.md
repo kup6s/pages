@@ -147,7 +147,42 @@ The Syncer clones to `/sites/.repos/docs/` and creates a symlink `/sites/docs/` 
 
 ### Private Repository with Deploy Token
 
-1. Create a Secret with your deploy token:
+For private repositories, you need to:
+1. Grant the syncer access to secrets in your namespace
+2. Create a secret with your Git credentials
+3. Reference the secret in your StaticSite
+
+**Step 1: Grant syncer access (RBAC)**
+
+The syncer does not have cluster-wide secret access. You must grant it access to read secrets in your namespace:
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pages-syncer-secrets
+  namespace: pages           # Your namespace
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pages-syncer-secrets
+  namespace: pages           # Your namespace
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pages-syncer-secrets
+subjects:
+  - kind: ServiceAccount
+    name: kup6s-pages-syncer # Syncer ServiceAccount (adjust if using custom release name)
+    namespace: kup6s-pages   # Syncer namespace
+```
+
+**Step 2: Create a Secret with your deploy token**
 
 ```yaml
 apiVersion: v1
@@ -158,9 +193,10 @@ metadata:
 type: Opaque
 stringData:
   password: "glpat-xxxxxxxxxxxx"  # Your Forgejo/GitLab/GitHub token
+  username: "git"                 # Optional, defaults to "git"
 ```
 
-2. Reference the Secret in your StaticSite:
+**Step 3: Reference the Secret in your StaticSite**
 
 ```yaml
 apiVersion: pages.kup6s.com/v1alpha1
@@ -176,7 +212,7 @@ spec:
     key: password           # Optional, defaults to "password"
 ```
 
-The Secret must be in the same namespace as the StaticSite.
+The Secret must be in the same namespace as the StaticSite. Without the RBAC setup, syncing will fail with "permission denied".
 
 ### Auto-Generated Domain
 
@@ -357,12 +393,18 @@ kubectl get staticsite my-website -n pages -o yaml
 
 ### Private repo authentication fails
 
-1. Verify the Secret exists and has the correct key:
+1. Verify the RBAC is set up (syncer needs access to secrets in your namespace):
+```bash
+kubectl get rolebinding pages-syncer-secrets -n pages
+```
+If missing, see "Private Repository with Deploy Token" section for RBAC setup.
+
+2. Verify the Secret exists and has the correct key:
 ```bash
 kubectl get secret my-repo-token -n pages -o yaml
 ```
 
-2. Test the token manually (replace with your values):
+3. Test the token manually (replace with your values):
 ```bash
 git clone https://git:YOUR_TOKEN@forgejo.example.com/org/repo.git
 ```

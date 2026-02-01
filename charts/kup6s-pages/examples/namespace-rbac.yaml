@@ -1,0 +1,36 @@
+# Grant the kup6s-pages syncer access to read secrets in your namespace
+#
+# Apply this template in your namespace:
+#   kubectl apply -f namespace-rbac.yaml -n YOUR_NAMESPACE
+#
+# Replace the following placeholders:
+#   - YOUR_NAMESPACE: The namespace where your StaticSites and secrets are
+#   - kup6s-pages-syncer: The syncer ServiceAccount name (default: <release>-syncer)
+#   - kup6s-pages: The namespace where kup6s-pages is installed
+#
+# This is required for private Git repositories. Without this RBAC setup,
+# the syncer cannot read your Git credential secrets and syncing will fail.
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pages-syncer-secrets
+  # Apply to your namespace: kubectl apply -f namespace-rbac.yaml -n YOUR_NAMESPACE
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pages-syncer-secrets
+  # Apply to your namespace: kubectl apply -f namespace-rbac.yaml -n YOUR_NAMESPACE
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pages-syncer-secrets
+subjects:
+  - kind: ServiceAccount
+    name: kup6s-pages-syncer  # Adjust if using custom release name
+    namespace: kup6s-pages    # Namespace where kup6s-pages is installed
