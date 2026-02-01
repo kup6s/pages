@@ -72,6 +72,9 @@ run-syncer:
 
 ## Utilities
 
+lint:
+	golangci-lint run ./...
+
 fmt:
 	go fmt ./...
 

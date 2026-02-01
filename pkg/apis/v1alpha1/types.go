@@ -99,6 +99,11 @@ type StaticSiteStatus struct {
 	// Conditions for detailed status information
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
+
+	// SyncToken for authenticating /sync and /site API calls
+	// Auto-generated on first reconcile
+	// +optional
+	SyncToken string `json:"syncToken,omitempty"`
 }
 
 // Phase describes the lifecycle status

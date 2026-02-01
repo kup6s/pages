@@ -47,13 +47,11 @@ helm install pages oci://ghcr.io/kup6s/kup6s-pages
 
 ## Dependencies
 
-- Go 1.22
-- controller-runtime v0.18
-- go-git v5.12
+- Go, controller-runtime, go-git (see go.mod for versions)
 - Requires: Traefik, cert-manager, RWX StorageClass
 
 # Issues/ Commits
 
 Do not mention AI/Claude.
-
+Always run `make lint` before committing.
 Always create a branch with worktree under `./.worktrees` in the project and PR if ready.
