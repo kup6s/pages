@@ -39,6 +39,7 @@ spec:
             - --pages-domain={{ .Values.operator.pagesDomain }}
             - --cluster-issuer={{ .Values.operator.clusterIssuer }}
             - --nginx-namespace={{ include "kup6s-pages.namespace" . }}
+            - --nginx-service-name={{ include "kup6s-pages.fullname" . }}-nginx
             - --metrics-bind-address={{ .Values.operator.metricsBindAddress }}
             - --health-probe-bind-address={{ .Values.operator.healthProbeBindAddress }}
             {{- range .Values.operator.extraArgs }}

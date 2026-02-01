@@ -138,12 +138,14 @@ spec:
       middlewares:
         - name: customer-website-prefix
       services:
-        - name: static-sites-nginx
-          namespace: kup6s-pages
+        - name: pages-nginx-proxy  # ExternalName service pointing to nginx
+          namespace: pages         # Same namespace as IngressRoute
           port: 80
   tls:
     secretName: customer-website-tls
 ```
+
+Note: The IngressRoute references a local `pages-nginx-proxy` ExternalName service (created by the operator) instead of the nginx service directly. This is required because Traefik doesn't allow cross-namespace service references by default.
 
 **cert-manager Certificate** (only for custom domains)
 ```yaml

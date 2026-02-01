@@ -24,8 +24,9 @@ import (
 const (
 	finalizerName = "pages.kup6s.com/finalizer"
 
-	// nginx Service name in the system namespace
-	nginxServiceName = "static-sites-nginx"
+	// nginxProxyServiceName is the name of the ExternalName service created
+	// in each StaticSite's namespace to enable cross-namespace access to nginx
+	nginxProxyServiceName = "pages-nginx-proxy"
 )
 
 // StaticSiteReconciler reconciles StaticSite resources
@@ -35,12 +36,13 @@ type StaticSiteReconciler struct {
 	Recorder      record.EventRecorder
 
 	// Config
-	PagesDomain    string // e.g. "pages.kup6s.com"
-	ClusterIssuer  string // e.g. "letsencrypt-prod"
-	NginxNamespace string // namespace where nginx service runs
+	PagesDomain      string // e.g. "pages.kup6s.com"
+	ClusterIssuer    string // e.g. "letsencrypt-prod"
+	NginxNamespace   string // namespace where nginx service runs
+	NginxServiceName string // name of the nginx service (e.g. "kup6s-pages-nginx")
 }
 
-// GVRs for Traefik and cert-manager
+// GVRs for Traefik, cert-manager, and core resources
 var (
 	ingressRouteGVR = schema.GroupVersionResource{
 		Group:    "traefik.io",
@@ -56,6 +58,11 @@ var (
 		Group:    "cert-manager.io",
 		Version:  "v1",
 		Resource: "certificates",
+	}
+	serviceGVR = schema.GroupVersionResource{
+		Group:    "",
+		Version:  "v1",
+		Resource: "services",
 	}
 )
 
@@ -133,30 +140,35 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return r.setError(ctx, site, "ValidationFailed", err)
 	}
 
-	// 5. Determine domain (custom or generated)
+	// 5. Create/update nginx proxy service (for cross-namespace access)
+	if err := r.reconcileNginxProxyService(ctx, site); err != nil {
+		return r.setError(ctx, site, "NginxProxyFailed", err)
+	}
+
+	// 6. Determine domain (custom or generated)
 	domain := site.Spec.Domain
 	if domain == "" {
 		domain = fmt.Sprintf("%s.%s", site.Name, r.PagesDomain)
 	}
 
-	// 6. Create/update Middlewares (stripPrefix + addPrefix)
+	// 7. Create/update Middlewares (stripPrefix + addPrefix)
 	if err := r.reconcileMiddleware(ctx, site); err != nil {
 		return r.setError(ctx, site, "MiddlewareFailed", err)
 	}
 
-	// 7. Create/update IngressRoute
+	// 8. Create/update IngressRoute
 	if err := r.reconcileIngressRoute(ctx, site, domain); err != nil {
 		return r.setError(ctx, site, "IngressFailed", err)
 	}
 
-	// 8. Create Certificate (if custom domain)
+	// 9. Create Certificate (if custom domain)
 	if site.Spec.Domain != "" {
 		if err := r.reconcileCertificate(ctx, site, domain); err != nil {
 			return r.setError(ctx, site, "CertificateFailed", err)
 		}
 	}
 
-	// 9. Update status
+	// 10. Update status
 	site.Status.Phase = pagesv1.PhaseReady
 	site.Status.Message = "Site configured, waiting for sync"
 	if site.Spec.PathPrefix != "" {
@@ -345,8 +357,8 @@ func (r *StaticSiteReconciler) reconcileIngressRoute(ctx context.Context, site *
 						"middlewares": middlewares,
 						"services": []interface{}{
 							map[string]interface{}{
-								"name":      nginxServiceName,
-								"namespace": r.NginxNamespace,
+								"name":      nginxProxyServiceName,
+								"namespace": site.Namespace,
 								"port":      80,
 							},
 						},
@@ -421,6 +433,60 @@ func (r *StaticSiteReconciler) reconcileCertificate(ctx context.Context, site *p
 	return nil
 }
 
+// reconcileNginxProxyService creates an ExternalName Service in the StaticSite's namespace
+// that points to the actual nginx service in the system namespace.
+// This enables cross-namespace service access for Traefik IngressRoutes.
+func (r *StaticSiteReconciler) reconcileNginxProxyService(ctx context.Context, site *pagesv1.StaticSite) error {
+	logger := log.FromContext(ctx)
+
+	// Build the full DNS name for the nginx service
+	// Format: <service-name>.<namespace>.svc.cluster.local
+	externalName := fmt.Sprintf("%s.%s.svc.cluster.local", r.NginxServiceName, r.NginxNamespace)
+
+	service := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "v1",
+			"kind":       "Service",
+			"metadata": map[string]interface{}{
+				"name":      nginxProxyServiceName,
+				"namespace": site.Namespace,
+				// No ownerReferences - service is shared across StaticSites in the namespace
+				"labels": map[string]interface{}{
+					"pages.kup6s.com/managed": "true",
+					"pages.kup6s.com/type":    "nginx-proxy",
+				},
+			},
+			"spec": map[string]interface{}{
+				"type":         "ExternalName",
+				"externalName": externalName,
+			},
+		},
+	}
+
+	existing, err := r.DynamicClient.Resource(serviceGVR).Namespace(site.Namespace).Get(ctx, nginxProxyServiceName, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			logger.Info("Creating nginx proxy Service", "name", nginxProxyServiceName, "externalName", externalName)
+			_, err = r.DynamicClient.Resource(serviceGVR).Namespace(site.Namespace).Create(ctx, service, metav1.CreateOptions{})
+			return err
+		}
+		return err
+	}
+
+	// Check if externalName needs updating (in case config changed)
+	spec, _, _ := unstructured.NestedMap(existing.Object, "spec")
+	existingExternalName, _, _ := unstructured.NestedString(spec, "externalName")
+	if existingExternalName != externalName {
+		service.SetResourceVersion(existing.GetResourceVersion())
+		logger.Info("Updating nginx proxy Service", "name", nginxProxyServiceName, "externalName", externalName)
+		_, err = r.DynamicClient.Resource(serviceGVR).Namespace(site.Namespace).Update(ctx, service, metav1.UpdateOptions{})
+		return err
+	}
+
+	logger.V(1).Info("nginx proxy Service already exists", "name", nginxProxyServiceName)
+	return nil
+}
+
 // handleDeletion cleans up on deletion
 func (r *StaticSiteReconciler) handleDeletion(ctx context.Context, site *pagesv1.StaticSite) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
@@ -429,6 +495,13 @@ func (r *StaticSiteReconciler) handleDeletion(ctx context.Context, site *pagesv1
 		logger.Info("Cleaning up StaticSite", "name", site.Name)
 
 		// Owned resources (middlewares, IngressRoute) are automatically deleted via ownerReferences
+
+		// Nginx proxy service is shared across sites in the namespace - cleanup if last site
+		if err := r.cleanupOrphanedNginxProxyService(ctx, site); err != nil {
+			logger.Error(err, "Failed to cleanup nginx proxy service")
+			// Don't block deletion for this
+		}
+
 		// Certificates are shared and need explicit cleanup
 		if site.Spec.Domain != "" {
 			if err := r.cleanupOrphanedCertificate(ctx, site); err != nil {
@@ -475,6 +548,41 @@ func (r *StaticSiteReconciler) cleanupOrphanedCertificate(ctx context.Context, d
 	logger.Info("Deleting orphaned certificate", "name", certName, "domain", domain)
 
 	err := r.DynamicClient.Resource(certificateGVR).Namespace(deletingSite.Namespace).Delete(ctx, certName, metav1.DeleteOptions{})
+	if err != nil && !errors.IsNotFound(err) {
+		return err
+	}
+
+	return nil
+}
+
+// cleanupOrphanedNginxProxyService removes the nginx proxy service if no other
+// StaticSites exist in the namespace
+func (r *StaticSiteReconciler) cleanupOrphanedNginxProxyService(ctx context.Context, deletingSite *pagesv1.StaticSite) error {
+	logger := log.FromContext(ctx)
+
+	// List all StaticSites in this namespace
+	siteList := &pagesv1.StaticSiteList{}
+	if err := r.List(ctx, siteList, client.InNamespace(deletingSite.Namespace)); err != nil {
+		return err
+	}
+
+	// Check if any other site exists in this namespace
+	otherSites := 0
+	for _, site := range siteList.Items {
+		if site.Name == deletingSite.Name {
+			continue
+		}
+		otherSites++
+	}
+
+	if otherSites > 0 {
+		logger.V(1).Info("nginx proxy Service still in use", "namespace", deletingSite.Namespace, "remainingSites", otherSites)
+		return nil
+	}
+
+	// No other sites in namespace, delete the proxy service
+	logger.Info("Deleting orphaned nginx proxy Service", "namespace", deletingSite.Namespace)
+	err := r.DynamicClient.Resource(serviceGVR).Namespace(deletingSite.Namespace).Delete(ctx, nginxProxyServiceName, metav1.DeleteOptions{})
 	if err != nil && !errors.IsNotFound(err) {
 		return err
 	}

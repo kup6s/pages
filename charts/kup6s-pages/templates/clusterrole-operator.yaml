@@ -27,6 +27,11 @@ rules:
     resources: ["certificates"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
+  # Core Services (for nginx proxy ExternalName services)
+  - apiGroups: [""]
+    resources: ["services"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
   # Events
   - apiGroups: [""]
     resources: ["events"]
