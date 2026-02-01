@@ -22,6 +22,37 @@ Check StaticSite status:
   kubectl get staticsites -A
   kubectl describe staticsite my-website -n pages
 
+For PRIVATE repositories, grant the syncer access to secrets in your namespace:
+
+  cat <<EOF | kubectl apply -f -
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: Role
+  metadata:
+    name: pages-syncer-secrets
+    namespace: YOUR_NAMESPACE
+  rules:
+    - apiGroups: [""]
+      resources: ["secrets"]
+      verbs: ["get"]
+  ---
+  apiVersion: rbac.authorization.k8s.io/v1
+  kind: RoleBinding
+  metadata:
+    name: pages-syncer-secrets
+    namespace: YOUR_NAMESPACE
+  roleRef:
+    apiGroup: rbac.authorization.k8s.io
+    kind: Role
+    name: pages-syncer-secrets
+  subjects:
+    - kind: ServiceAccount
+      name: {{ include "kup6s-pages.syncer.serviceAccountName" . }}
+      namespace: {{ include "kup6s-pages.namespace" . }}
+  EOF
+
+Then create a secret with your Git credentials and reference it in secretRef.
+See README.md "Private Repositories" section for details.
+
 {{- if .Values.webhook.enabled }}
 
 Webhook endpoint enabled at:

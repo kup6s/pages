@@ -13,9 +13,7 @@ rules:
   - apiGroups: ["pages.kup6s.com"]
     resources: ["staticsites/status"]
     verbs: ["get", "update", "patch"]
-
-  # Secrets for Git credentials
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get"]
+  # NOTE: Secrets access removed for security (issue #8)
+  # Users must create Role/RoleBinding in their namespace to grant syncer access
+  # See README.md "Private Repositories" section
 {{- end }}
