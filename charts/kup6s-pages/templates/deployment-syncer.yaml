@@ -1,3 +1,4 @@
+{{- include "kup6s-pages.validateWebhook" . -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -39,9 +40,24 @@ spec:
             - --sites-root={{ .Values.syncer.sitesRoot }}
             - --sync-interval={{ .Values.syncer.syncInterval }}
             - --webhook-addr={{ .Values.syncer.webhookAddr }}
+            {{- if include "kup6s-pages.webhook.hasSecret" . }}
+            - --webhook-secret=$(WEBHOOK_SECRET)
+            {{- end }}
             {{- range .Values.syncer.extraArgs }}
             - {{ . }}
             {{- end }}
+          {{- if include "kup6s-pages.webhook.hasSecret" . }}
+          env:
+            - name: WEBHOOK_SECRET
+              {{- if .Values.webhook.secret }}
+              value: {{ .Values.webhook.secret | quote }}
+              {{- else }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.webhook.secretRef.name }}
+                  key: {{ .Values.webhook.secretRef.key }}
+              {{- end }}
+          {{- end }}
           ports:
             - name: webhook
               containerPort: 8080

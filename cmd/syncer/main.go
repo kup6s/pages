@@ -85,6 +85,11 @@ func main() {
 		WebhookSecret: webhookSecret,
 	}
 
+	// Warn if webhook secret is not configured
+	if webhookSecret == "" {
+		log.Info("WARNING: webhook secret not configured - webhook signature validation is disabled")
+	}
+
 	// Context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

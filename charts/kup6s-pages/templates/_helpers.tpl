@@ -153,3 +153,24 @@ Webhook ClusterIssuer
 {{- define "kup6s-pages.webhook.clusterIssuer" -}}
 {{- default .Values.operator.clusterIssuer .Values.webhook.clusterIssuer }}
 {{- end }}
+
+{{/*
+Check if webhook secret is configured
+Returns true if either webhook.secret or webhook.secretRef.name is set
+*/}}
+{{- define "kup6s-pages.webhook.hasSecret" -}}
+{{- if or .Values.webhook.secret .Values.webhook.secretRef.name -}}
+true
+{{- end -}}
+{{- end }}
+
+{{/*
+Webhook secret name (for secretRef)
+*/}}
+{{- define "kup6s-pages.webhook.secretName" -}}
+{{- if .Values.webhook.secretRef.name -}}
+{{- .Values.webhook.secretRef.name -}}
+{{- else -}}
+{{- printf "%s-webhook-secret" (include "kup6s-pages.fullname" .) -}}
+{{- end -}}
+{{- end }}
