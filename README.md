@@ -279,23 +279,29 @@ For instant deployments on push, configure webhooks in your Git provider.
 
 ### Setup Webhook Ingress
 
-Enable webhooks in your Helm values:
+Enable webhooks in your Helm values. **A webhook secret is required** for HMAC signature validation:
 
 ```yaml
 webhook:
   enabled: true
   domain: "webhook.pages.example.com"
   clusterIssuer: "letsencrypt-prod"
+  # Required: set a secret for HMAC validation
+  secret: "your-webhook-secret-here"
+  # Or reference an existing secret:
+  # secretRef:
+  #   name: "my-webhook-secret"
+  #   key: "webhook-secret"
 ```
 
-This creates the IngressRoute and Certificate automatically.
+This creates the IngressRoute and Certificate automatically. The same secret must be configured in your Git provider's webhook settings.
 
 ### Configure in Forgejo/Gitea
 
 1. Go to Repository → Settings → Webhooks → Add Webhook
 2. URL: `https://webhook.pages.kup6s.com/webhook/forgejo`
 3. Content Type: `application/json`
-4. Secret: (optional, for signature validation)
+4. Secret: Use the same secret configured in `webhook.secret`
 5. Events: Push events
 
 ### Configure in GitHub
@@ -303,7 +309,7 @@ This creates the IngressRoute and Certificate automatically.
 1. Go to Repository → Settings → Webhooks → Add webhook
 2. Payload URL: `https://webhook.pages.kup6s.com/webhook/github`
 3. Content type: `application/json`
-4. Secret: (optional, for signature validation)
+4. Secret: Use the same secret configured in `webhook.secret`
 5. Events: Just the push event
 
 ## Operator Configuration

@@ -320,6 +320,17 @@ webhook:
   # -- Additional IngressRoute annotations
   annotations: {}
 
+  # -- Webhook secret for HMAC signature validation
+  # REQUIRED when webhook.enabled=true. Either set secret directly or use secretRef.
+  secret: ""
+
+  # -- Reference to existing secret containing the webhook secret
+  secretRef:
+    # -- Name of the existing secret
+    name: ""
+    # -- Key in the secret containing the webhook secret value
+    key: "webhook-secret"
+
 # =============================================================================
 # RBAC Configuration
 # =============================================================================
