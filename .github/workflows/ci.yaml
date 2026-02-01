@@ -55,7 +55,7 @@ jobs:
         run: helm lint charts/kup6s-pages
 
       - name: Cache Helm plugins
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.HELM_PLUGINS }}
           key: helm-plugins-unittest-${{ runner.os }}
@@ -70,7 +70,7 @@ jobs:
         run: helm unittest charts/kup6s-pages
 
       - name: Cache kubeconform
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /usr/local/bin/kubeconform
           key: kubeconform-${{ env.KUBECONFORM_VERSION }}-${{ runner.os }}
