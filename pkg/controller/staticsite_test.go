@@ -56,7 +56,7 @@ func TestReconcile_NewSite(t *testing.T) {
 		},
 	}
 
-	// Erster Reconcile: Finalizer hinzufügen
+	// First Reconcile: add finalizer
 	result, err := r.Reconcile(context.Background(), req)
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
@@ -65,13 +65,22 @@ func TestReconcile_NewSite(t *testing.T) {
 		t.Error("expected Requeue=true after adding finalizer")
 	}
 
-	// Zweiter Reconcile: Ressourcen erstellen
+	// Second Reconcile: generate sync token
+	result, err = r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+	if !result.Requeue {
+		t.Error("expected Requeue=true after generating sync token")
+	}
+
+	// Third Reconcile: create resources
 	result, err = r.Reconcile(context.Background(), req)
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
 
-	// Status prüfen
+	// Check status
 	updatedSite := &pagesv1.StaticSite{}
 	err = fakeClient.Get(context.Background(), req.NamespacedName, updatedSite)
 	if err != nil {
@@ -126,7 +135,14 @@ func TestReconcile_CustomDomain(t *testing.T) {
 		},
 	}
 
+	// First Reconcile: generate sync token
 	_, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	// Second Reconcile: create resources
+	_, err = r.Reconcile(context.Background(), req)
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
@@ -492,7 +508,14 @@ func TestReconcile_PathPrefix(t *testing.T) {
 		},
 	}
 
+	// First Reconcile: generate sync token
 	_, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	// Second Reconcile: create resources
+	_, err = r.Reconcile(context.Background(), req)
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
@@ -555,7 +578,14 @@ func TestReconcile_PathPrefixValidationFails(t *testing.T) {
 		},
 	}
 
+	// First Reconcile: generate sync token
 	_, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v, want nil", err)
+	}
+
+	// Second Reconcile: validation fails, sets Error status
+	_, err = r.Reconcile(context.Background(), req)
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v, want nil (error in status)", err)
 	}

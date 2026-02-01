@@ -10,12 +10,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: '1.22'
+          go-version: '1.24'
           cache: true
 
       - name: Run tests
@@ -27,17 +27,18 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
-          go-version: '1.22'
+          go-version: '1.24'
 
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v4
-        with:
-          version: latest
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+
+      - name: Run lint
+        run: make lint
 
   helm-test:
     runs-on: ubuntu-latest
@@ -45,7 +46,7 @@ jobs:
       HELM_PLUGINS: ${{ github.workspace }}/.helm/plugins
       KUBECONFORM_VERSION: v0.6.7
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Helm
         uses: azure/setup-helm@v4
@@ -54,7 +55,7 @@ jobs:
         run: helm lint charts/kup6s-pages
 
       - name: Cache Helm plugins
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ env.HELM_PLUGINS }}
           key: helm-plugins-unittest-${{ runner.os }}
@@ -69,7 +70,7 @@ jobs:
         run: helm unittest charts/kup6s-pages
 
       - name: Cache kubeconform
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /usr/local/bin/kubeconform
           key: kubeconform-${{ env.KUBECONFORM_VERSION }}-${{ runner.os }}

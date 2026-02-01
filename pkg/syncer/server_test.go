@@ -201,3 +201,79 @@ func TestGitHubPayloadParsing(t *testing.T) {
 		t.Errorf("FullName = %q, want %q", p.Repository.FullName, "user/repo")
 	}
 }
+
+func TestSyncEndpointRequiresAuth(t *testing.T) {
+	// Without a Syncer/DynamicClient, validateSiteToken will fail
+	// and return 401 Unauthorized
+	w := &WebhookServer{
+		Syncer: &Syncer{}, // No DynamicClient configured
+	}
+
+	req := httptest.NewRequest("POST", "/sync/default/mysite", nil)
+	rr := httptest.NewRecorder()
+
+	w.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want %d (Unauthorized)", rr.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestSyncEndpointRequiresAPIKeyHeader(t *testing.T) {
+	w := &WebhookServer{
+		Syncer: &Syncer{},
+	}
+
+	// Request without X-API-Key header
+	req := httptest.NewRequest("POST", "/sync/default/mysite", nil)
+	rr := httptest.NewRecorder()
+
+	w.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("without X-API-Key: status = %d, want %d", rr.Code, http.StatusUnauthorized)
+	}
+
+	// Request with empty X-API-Key header
+	req = httptest.NewRequest("POST", "/sync/default/mysite", nil)
+	req.Header.Set("X-API-Key", "")
+	rr = httptest.NewRecorder()
+
+	w.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("with empty X-API-Key: status = %d, want %d", rr.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestDeleteEndpointRequiresAuth(t *testing.T) {
+	w := &WebhookServer{
+		Syncer: &Syncer{},
+	}
+
+	// New endpoint format: DELETE /site/{namespace}/{name}
+	req := httptest.NewRequest("DELETE", "/site/default/mysite", nil)
+	rr := httptest.NewRecorder()
+
+	w.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want %d (Unauthorized)", rr.Code, http.StatusUnauthorized)
+	}
+}
+
+func TestDeleteEndpointOldFormatReturns404(t *testing.T) {
+	w := &WebhookServer{
+		Syncer: &Syncer{},
+	}
+
+	// Old format: DELETE /site/{name} should now return 404
+	req := httptest.NewRequest("DELETE", "/site/mysite", nil)
+	rr := httptest.NewRecorder()
+
+	w.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("old format: status = %d, want %d (NotFound)", rr.Code, http.StatusNotFound)
+	}
+}
