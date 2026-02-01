@@ -3,6 +3,8 @@ package controller
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"strings"
 	"time"
@@ -79,6 +81,16 @@ func sanitizeDomainForResourceName(domain string) string {
 	return name
 }
 
+// generateSecureToken creates a cryptographically secure random token
+func generateSecureToken(length int) string {
+	b := make([]byte, length)
+	if _, err := rand.Read(b); err != nil {
+		// Fallback should never happen with crypto/rand
+		panic("failed to generate random bytes: " + err.Error())
+	}
+	return base64.URLEncoding.EncodeToString(b)[:length]
+}
+
 // validatePathPrefix checks if pathPrefix configuration is valid
 func validatePathPrefix(site *pagesv1.StaticSite) error {
 	prefix := site.Spec.PathPrefix
@@ -135,40 +147,50 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{Requeue: true}, nil
 	}
 
-	// 4. Validate pathPrefix
+	// 4. Generate sync token if not present
+	if site.Status.SyncToken == "" {
+		site.Status.SyncToken = generateSecureToken(32)
+		if err := r.Status().Update(ctx, site); err != nil {
+			return ctrl.Result{}, err
+		}
+		logger.Info("Generated sync token", "name", site.Name)
+		return ctrl.Result{Requeue: true}, nil
+	}
+
+	// 5. Validate pathPrefix
 	if err := validatePathPrefix(site); err != nil {
 		return r.setError(ctx, site, "ValidationFailed", err)
 	}
 
-	// 5. Create/update nginx proxy service (for cross-namespace access)
+	// 6. Create/update nginx proxy service (for cross-namespace access)
 	if err := r.reconcileNginxProxyService(ctx, site); err != nil {
 		return r.setError(ctx, site, "NginxProxyFailed", err)
 	}
 
-	// 6. Determine domain (custom or generated)
+	// 7. Determine domain (custom or generated)
 	domain := site.Spec.Domain
 	if domain == "" {
 		domain = fmt.Sprintf("%s.%s", site.Name, r.PagesDomain)
 	}
 
-	// 7. Create/update Middlewares (stripPrefix + addPrefix)
+	// 8. Create/update Middlewares (stripPrefix + addPrefix)
 	if err := r.reconcileMiddleware(ctx, site); err != nil {
 		return r.setError(ctx, site, "MiddlewareFailed", err)
 	}
 
-	// 8. Create/update IngressRoute
+	// 9. Create/update IngressRoute
 	if err := r.reconcileIngressRoute(ctx, site, domain); err != nil {
 		return r.setError(ctx, site, "IngressFailed", err)
 	}
 
-	// 9. Create Certificate (if custom domain)
+	// 10. Create Certificate (if custom domain)
 	if site.Spec.Domain != "" {
 		if err := r.reconcileCertificate(ctx, site, domain); err != nil {
 			return r.setError(ctx, site, "CertificateFailed", err)
 		}
 	}
 
-	// 10. Update status
+	// 11. Update status
 	site.Status.Phase = pagesv1.PhaseReady
 	site.Status.Message = "Site configured, waiting for sync"
 	if site.Spec.PathPrefix != "" {

@@ -249,6 +249,7 @@ Both sites share the same TLS certificate. Requests to:
 | `lastSync` | Timestamp of last successful sync |
 | `lastCommit` | Short SHA of the last synced commit |
 | `url` | Full URL of the deployed site |
+| `syncToken` | Auto-generated token for API authentication |
 
 ### Check Status
 
@@ -273,7 +274,8 @@ For instant deployments on push, configure webhooks in your Git provider.
 |----------|-----|
 | Forgejo/Gitea | `https://webhook.pages.kup6s.com/webhook/forgejo` |
 | GitHub | `https://webhook.pages.kup6s.com/webhook/github` |
-| Manual trigger | `POST https://webhook.pages.kup6s.com/sync/{namespace}/{name}` |
+| Manual sync | `POST /sync/{namespace}/{name}` (requires `X-API-Key` header) |
+| Delete site | `DELETE /site/{namespace}/{name}` (requires `X-API-Key` header) |
 
 ### Setup Webhook Ingress
 
@@ -369,9 +371,13 @@ git clone https://git:YOUR_TOKEN@forgejo.example.com/org/repo.git
 
 ### Force re-sync
 
-Trigger a manual sync via webhook:
+Trigger a manual sync using the site's sync token:
 ```bash
-curl -X POST https://webhook.pages.kup6s.com/sync/pages/my-website
+# Get the sync token from the StaticSite status
+TOKEN=$(kubectl get staticsite my-website -n pages -o jsonpath='{.status.syncToken}')
+
+# Trigger sync with authentication
+curl -H "X-API-Key: $TOKEN" -X POST https://webhook.pages.kup6s.com/sync/pages/my-website
 ```
 
 ## Development
