@@ -211,7 +211,10 @@ func (s *Syncer) syncSite(ctx context.Context, site *staticSiteData) error {
 			return fmt.Errorf("git clone failed: %w", err)
 		}
 
-		head, _ := repo.Head()
+		head, err := repo.Head()
+		if err != nil {
+			logger.V(1).Info("Failed to get HEAD after clone", "error", err)
+		}
 		if head != nil {
 			commitHash = head.Hash().String()[:8]
 		}
@@ -244,7 +247,10 @@ func (s *Syncer) syncSite(ctx context.Context, site *staticSiteData) error {
 			return fmt.Errorf("git pull failed: %w", err)
 		}
 
-		head, _ := repo.Head()
+		head, err := repo.Head()
+		if err != nil {
+			logger.V(1).Info("Failed to get HEAD after pull", "error", err)
+		}
 		if head != nil {
 			commitHash = head.Hash().String()[:8]
 		}
@@ -479,7 +485,9 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 			if !activeSites[name] {
 				repoPath := filepath.Join(reposDir, name)
 				logger.Info("Removing orphaned repo directory", "name", name)
-				_ = os.RemoveAll(repoPath)
+				if err := os.RemoveAll(repoPath); err != nil {
+					logger.Error(err, "Failed to remove orphaned repo", "path", repoPath)
+				}
 			}
 		}
 	}
