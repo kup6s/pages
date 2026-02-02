@@ -44,6 +44,9 @@ const (
 
 	// errorRetryInterval is how long to wait before retrying after an error
 	errorRetryInterval = 30 * time.Second
+
+	// immediateRequeueDelay is a short delay for requeuing after state changes
+	immediateRequeueDelay = 100 * time.Millisecond
 )
 
 // truncateK8sName truncates a name to the Kubernetes resource name length limit
@@ -172,7 +175,7 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if err := r.Update(ctx, site); err != nil {
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{RequeueAfter: time.Millisecond}, nil
+		return ctrl.Result{RequeueAfter: immediateRequeueDelay}, nil
 	}
 
 	// 4. Generate sync token if not present
@@ -186,7 +189,7 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			return ctrl.Result{}, err
 		}
 		logger.Info("Generated sync token", "name", site.Name)
-		return ctrl.Result{RequeueAfter: time.Millisecond}, nil
+		return ctrl.Result{RequeueAfter: immediateRequeueDelay}, nil
 	}
 
 	// 5. Validate pathPrefix
