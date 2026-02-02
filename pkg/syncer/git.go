@@ -277,9 +277,7 @@ func (s *Syncer) syncSite(ctx context.Context, site *staticSiteData) error {
 func (s *Syncer) setupSubpath(siteName, repoDir, subpath string) error {
 	// Normalize subpath (remove leading /)
 	subpath = filepath.Clean(subpath)
-	if subpath[0] == '/' {
-		subpath = subpath[1:]
-	}
+	subpath = strings.TrimPrefix(subpath, "/")
 
 	// Source directory: the cloned repo + subpath
 	srcDir := filepath.Join(repoDir, subpath)

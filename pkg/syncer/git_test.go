@@ -336,6 +336,30 @@ func TestSetupSubpath(t *testing.T) {
 			wantErr:   false,
 			checkLink: true,
 		},
+		{
+			name:     "handles root path (just slash)",
+			siteName: "rootsite",
+			subpath:  "/",
+			setup: func() string {
+				repoDir := filepath.Join(tmpDir, ".repos", "rootsite")
+				_ = os.MkdirAll(repoDir, 0755)
+				return repoDir
+			},
+			wantErr:   false,
+			checkLink: true,
+		},
+		{
+			name:     "handles empty subpath as root",
+			siteName: "emptysite",
+			subpath:  "",
+			setup: func() string {
+				repoDir := filepath.Join(tmpDir, ".repos", "emptysite")
+				_ = os.MkdirAll(repoDir, 0755)
+				return repoDir
+			},
+			wantErr:   false,
+			checkLink: true,
+		},
 	}
 
 	for _, tt := range tests {
