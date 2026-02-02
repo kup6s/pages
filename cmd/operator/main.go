@@ -5,11 +5,15 @@ import (
 	"flag"
 	"os"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/dynamic"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/cache"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
@@ -52,6 +56,18 @@ func main() {
 	// Get kubeconfig once and reuse
 	config := ctrl.GetConfigOrDie()
 
+	// Configure namespace-scoped cache for Certificates.
+	// The operator only manages Certificates in the nginx namespace,
+	// but RBAC grants namespace-scoped permissions (Role, not ClusterRole).
+	// Without this, controller-runtime's default cluster-wide cache would
+	// require cluster-scope list/watch permissions.
+	certObj := &unstructured.Unstructured{}
+	certObj.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cert-manager.io",
+		Version: "v1",
+		Kind:    "Certificate",
+	})
+
 	// Create manager
 	mgr, err := ctrl.NewManager(config, ctrl.Options{
 		Scheme:                 scheme,
@@ -59,6 +75,15 @@ func main() {
 		HealthProbeBindAddress: probeAddr,
 		LeaderElection:         true,
 		LeaderElectionID:       "kup6s-pages-operator",
+		Cache: cache.Options{
+			ByObject: map[client.Object]cache.ByObject{
+				certObj: {
+					Namespaces: map[string]cache.Config{
+						nginxNamespace: {},
+					},
+				},
+			},
+		},
 	})
 	if err != nil {
 		setupLog.Error(err, "unable to create manager")
