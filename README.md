@@ -432,6 +432,20 @@ TOKEN=$(kubectl get staticsite my-website -n pages -o jsonpath='{.status.syncTok
 curl -H "X-API-Key: $TOKEN" -X POST https://webhook.pages.kup6s.com/sync/pages/my-website
 ```
 
+## Security
+
+The operator uses a ClusterRole because it watches StaticSite resources across all namespaces.
+All managed resources (IngressRoutes, Middlewares, Certificates, Services) are created in the
+StaticSite's namespace, following the principle of least privilege.
+
+Key security features:
+- Operator cannot create or delete StaticSite resources (users do that)
+- Syncer has no secrets access by default (opt-in via namespace Roles)
+- SSRF protection via mandatory `--allowed-hosts` flag
+- All pods run as non-root with read-only root filesystem
+
+See [docs/SECURITY.md](docs/SECURITY.md) for detailed RBAC documentation.
+
 ## Development
 
 ### Project Structure

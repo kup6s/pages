@@ -35,7 +35,7 @@ tests:
           content:
             apiGroups: ["pages.kup6s.com"]
             resources: ["staticsites"]
-            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+            verbs: ["get", "list", "watch", "update", "patch"]
 
   - it: should create syncer clusterrole with correct API group
     template: templates/clusterrole-syncer.yaml
