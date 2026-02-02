@@ -1,0 +1,40 @@
+// Light theme syntax highlighting (default)
+@import "chroma-light";
+
+// Dark theme syntax highlighting - both media query and data attribute
+@media (prefers-color-scheme: dark) {
+  @import "chroma-dark";
+
+  .highlight,
+  .highlight pre,
+  .chroma,
+  pre,
+  pre code {
+    background-color: #272822 !important;
+    color: #f8f8f2 !important;
+  }
+
+  :not(pre) > code {
+    background: #3e3d32 !important;
+    color: #f8f8f2 !important;
+  }
+}
+
+// Also support explicit dark theme toggle
+[data-theme="dark"] {
+  @import "chroma-dark";
+
+  .highlight,
+  .highlight pre,
+  .chroma,
+  pre,
+  pre code {
+    background-color: #272822 !important;
+    color: #f8f8f2 !important;
+  }
+
+  :not(pre) > code {
+    background: #3e3d32 !important;
+    color: #f8f8f2 !important;
+  }
+}

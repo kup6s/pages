@@ -13,7 +13,7 @@ defaultContentLanguage: en
 
 # Theme settings
 params:
-  BookTheme: auto
+  BookTheme: dark
   BookToC: true
   BookSection: /
   BookRepo: https://github.com/kup6s/pages
@@ -35,7 +35,7 @@ markup:
     renderer:
       unsafe: true
   highlight:
-    style: github
+    noClasses: false
     lineNos: false
 
 # Output formats

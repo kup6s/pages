@@ -1,4 +1,9 @@
-# Security Documentation
+---
+title: Security
+weight: 55
+---
+
+# Security
 
 This document describes the RBAC configuration and security considerations for kup6s-pages.
 
@@ -77,7 +82,7 @@ verbs: ["get", "update", "patch"]  # for staticsites/status
 ```
 
 Secrets access is **not granted by default**. Users must create namespace-scoped Roles
-to grant the syncer access to Git credentials. See the README for configuration details.
+to grant the syncer access to Git credentials. See [Private Repos]({{< relref "/usage/private-repos" >}}) for configuration details.
 
 ## Security Benefits
 
