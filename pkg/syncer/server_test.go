@@ -8,6 +8,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -755,5 +757,130 @@ func TestSyncByRepo_ListError(t *testing.T) {
 
 	if err == nil {
 		t.Error("syncByRepo() expected error for list failure, got nil")
+	}
+}
+
+func TestHandleDelete_Error(t *testing.T) {
+	// Create a read-only directory that will cause deletion to fail
+	tmpDir := t.TempDir()
+	sitesDir := filepath.Join(tmpDir, "sites")
+	siteDir := filepath.Join(sitesDir, "mysite")
+
+	if err := os.MkdirAll(siteDir, 0o755); err != nil {
+		t.Fatalf("failed to create site dir: %v", err)
+	}
+
+	// Create a file inside and make parent non-writable to cause deletion error
+	testFile := filepath.Join(siteDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("test"), 0o644); err != nil {
+		t.Fatalf("failed to create test file: %v", err)
+	}
+
+	// Make the sites directory read-only to prevent deletion
+	if err := os.Chmod(sitesDir, 0o555); err != nil {
+		t.Fatalf("failed to chmod sites dir: %v", err)
+	}
+	defer func() { _ = os.Chmod(sitesDir, 0o755) }() // Cleanup
+
+	w := &WebhookServer{
+		Syncer: &Syncer{
+			SitesRoot: sitesDir,
+		},
+	}
+
+	req := httptest.NewRequest("DELETE", "/site/default/mysite", nil)
+	rr := httptest.NewRecorder()
+
+	w.handleDelete(req.Context(), rr, "default", "mysite")
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d (Internal Server Error)", rr.Code, http.StatusInternalServerError)
+	}
+}
+
+func TestSyncByRepo_ParseError(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	fakeClient := &fakeDynamicClientWithInvalidSite{}
+
+	w := &WebhookServer{
+		Syncer: &Syncer{
+			SitesRoot:     tmpDir,
+			AllowedHosts:  []string{"github.com"},
+			DynamicClient: fakeClient,
+		},
+	}
+
+	ctx := context.Background()
+	// Should not return error - parse errors are logged and skipped
+	err := w.syncByRepo(ctx, "https://github.com/user/repo.git", "main")
+
+	if err != nil {
+		t.Errorf("syncByRepo() error = %v, want nil (parse errors should be skipped)", err)
+	}
+}
+
+func TestHandleForgejoWebhook_BranchMismatch(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a site configured for "develop" branch
+	fakeClient := &fakeDynamicClientWithSites{
+		sites: []siteSpec{
+			{name: "mysite", namespace: "default", repo: "https://forgejo.example.com/user/repo.git", branch: "develop"},
+		},
+	}
+
+	w := &WebhookServer{
+		Syncer: &Syncer{
+			SitesRoot:     tmpDir,
+			AllowedHosts:  []string{"forgejo.example.com"},
+			DynamicClient: fakeClient,
+			ClientSet:     newFakeClientset(),
+		},
+	}
+
+	// Send webhook for "main" branch - should not match any site
+	payload := `{"ref": "refs/heads/main", "repository": {"full_name": "user/repo", "clone_url": "https://forgejo.example.com/user/repo.git"}}`
+	req := httptest.NewRequest("POST", "/webhook/forgejo", strings.NewReader(payload))
+	rr := httptest.NewRecorder()
+
+	w.handleForgejoWebhook(req.Context(), rr, req)
+
+	// Should return OK even when no sites match (webhook is accepted, just no sync occurs)
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
+	}
+}
+
+func TestHandleGitHubWebhook_BranchMismatch(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create a site configured for "develop" branch
+	fakeClient := &fakeDynamicClientWithSites{
+		sites: []siteSpec{
+			{name: "mysite", namespace: "default", repo: "https://github.com/user/repo.git", branch: "develop"},
+		},
+	}
+
+	w := &WebhookServer{
+		Syncer: &Syncer{
+			SitesRoot:     tmpDir,
+			AllowedHosts:  []string{"github.com"},
+			DynamicClient: fakeClient,
+			ClientSet:     newFakeClientset(),
+		},
+	}
+
+	// Send webhook for "main" branch - should not match any site configured for "develop"
+	payload := `{"ref": "refs/heads/main", "repository": {"full_name": "user/repo", "clone_url": "https://github.com/user/repo.git"}}`
+	req := httptest.NewRequest("POST", "/webhook/github", strings.NewReader(payload))
+	req.Header.Set("X-GitHub-Event", "push")
+	rr := httptest.NewRecorder()
+
+	w.handleGitHubWebhook(req.Context(), rr, req)
+
+	// Should return OK even when no sites match (webhook is accepted, just no sync occurs)
+	if rr.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
 	}
 }
