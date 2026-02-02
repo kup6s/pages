@@ -158,9 +158,14 @@ syncer:
   podSecurityContext: {}
 
   # -- Container security context
+  # Note: readOnlyRootFilesystem not used - syncer needs writable /tmp for git operations
   securityContext:
+    allowPrivilegeEscalation: false
     runAsNonRoot: true
     runAsUser: 1000
+    capabilities:
+      drop:
+        - ALL
 
   # -- Resource requests and limits
   resources:
