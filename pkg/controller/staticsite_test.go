@@ -16,6 +16,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
 
@@ -2250,5 +2251,950 @@ func TestReconcile_ExistingCertificateSkipsCreate(t *testing.T) {
 
 	if updatedSite.Status.Phase != pagesv1.PhaseReady {
 		t.Errorf("Phase = %q, want %q", updatedSite.Status.Phase, pagesv1.PhaseReady)
+	}
+}
+
+// deletionErrorDynamicClient returns errors on deletion for testing handleDeletion error paths
+type deletionErrorDynamicClient struct {
+	ingressRouteDeleteErr error
+	middlewareDeleteErr   error
+	deletedResources      []string
+}
+
+func (d *deletionErrorDynamicClient) Resource(resource schema.GroupVersionResource) dynamic.NamespaceableResourceInterface {
+	return &deletionErrorNamespaceableResource{
+		gvr:    resource,
+		client: d,
+	}
+}
+
+type deletionErrorNamespaceableResource struct {
+	gvr       schema.GroupVersionResource
+	namespace string
+	client    *deletionErrorDynamicClient
+}
+
+func (d *deletionErrorNamespaceableResource) Namespace(ns string) dynamic.ResourceInterface {
+	return &deletionErrorNamespaceableResource{
+		gvr:       d.gvr,
+		namespace: ns,
+		client:    d.client,
+	}
+}
+
+func (d *deletionErrorNamespaceableResource) Get(ctx context.Context, name string, opts metav1.GetOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return nil, &notFoundError{}
+}
+
+func (d *deletionErrorNamespaceableResource) Create(ctx context.Context, obj *unstructured.Unstructured, opts metav1.CreateOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (d *deletionErrorNamespaceableResource) Update(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (d *deletionErrorNamespaceableResource) Delete(ctx context.Context, name string, opts metav1.DeleteOptions, subresources ...string) error {
+	d.client.deletedResources = append(d.client.deletedResources, d.gvr.Resource+"/"+name)
+	if d.gvr == ingressRouteGVR && d.client.ingressRouteDeleteErr != nil {
+		return d.client.ingressRouteDeleteErr
+	}
+	if d.gvr == middlewareGVR && d.client.middlewareDeleteErr != nil {
+		return d.client.middlewareDeleteErr
+	}
+	return nil
+}
+
+func (d *deletionErrorNamespaceableResource) List(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+	return &unstructured.UnstructuredList{}, nil
+}
+
+func (d *deletionErrorNamespaceableResource) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
+	return nil, nil
+}
+
+func (d *deletionErrorNamespaceableResource) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return &unstructured.Unstructured{}, nil
+}
+
+func (d *deletionErrorNamespaceableResource) UpdateStatus(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (d *deletionErrorNamespaceableResource) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
+	return nil
+}
+
+func (d *deletionErrorNamespaceableResource) Apply(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (d *deletionErrorNamespaceableResource) ApplyStatus(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func TestHandleDeletion_IngressRouteDeleteError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	now := metav1.Now()
+	site := &pagesv1.StaticSite{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "ir-delete-error",
+			Namespace:         "default",
+			UID:               "test-uid-ir-err",
+			Finalizers:        []string{finalizerName},
+			DeletionTimestamp: &now,
+		},
+		Spec: pagesv1.StaticSiteSpec{
+			Repo: "https://github.com/example/repo.git",
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(site).
+		Build()
+
+	dynClient := &deletionErrorDynamicClient{
+		ingressRouteDeleteErr: errors.New("IngressRoute deletion failed"),
+	}
+
+	r := &StaticSiteReconciler{
+		Client:           fakeClient,
+		DynamicClient:    dynClient,
+		Recorder:         events.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "ir-delete-error",
+			Namespace: "default",
+		},
+	}
+
+	// Reconcile should continue despite IngressRoute deletion error
+	result, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v, want nil (error should be logged not returned)", err)
+	}
+
+	if result.RequeueAfter != 0 {
+		t.Error("expected RequeueAfter=0 after deletion handling")
+	}
+
+	// Verify that deletion was still attempted for all resources
+	// IngressRoute delete was called (and errored), middleware delete should also have been called
+	if len(dynClient.deletedResources) < 2 {
+		t.Errorf("expected at least 2 delete attempts, got %d: %v", len(dynClient.deletedResources), dynClient.deletedResources)
+	}
+}
+
+func TestHandleDeletion_MiddlewareDeleteError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	now := metav1.Now()
+	site := &pagesv1.StaticSite{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "mw-delete-error",
+			Namespace:         "default",
+			UID:               "test-uid-mw-err",
+			Finalizers:        []string{finalizerName},
+			DeletionTimestamp: &now,
+		},
+		Spec: pagesv1.StaticSiteSpec{
+			Repo: "https://github.com/example/repo.git",
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(site).
+		Build()
+
+	dynClient := &deletionErrorDynamicClient{
+		middlewareDeleteErr: errors.New("Middleware deletion failed"),
+	}
+
+	r := &StaticSiteReconciler{
+		Client:           fakeClient,
+		DynamicClient:    dynClient,
+		Recorder:         events.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "mw-delete-error",
+			Namespace: "default",
+		},
+	}
+
+	// Reconcile should continue despite Middleware deletion error
+	result, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v, want nil (error should be logged not returned)", err)
+	}
+
+	if result.RequeueAfter != 0 {
+		t.Error("expected RequeueAfter=0 after deletion handling")
+	}
+}
+
+func TestHandleDeletion_StripMiddlewareDeleteError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	now := metav1.Now()
+	site := &pagesv1.StaticSite{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:              "strip-delete-error",
+			Namespace:         "default",
+			UID:               "test-uid-strip-err",
+			Finalizers:        []string{finalizerName},
+			DeletionTimestamp: &now,
+		},
+		Spec: pagesv1.StaticSiteSpec{
+			Repo:       "https://github.com/example/repo.git",
+			Domain:     "example.com",
+			PathPrefix: "/2019",
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(site).
+		Build()
+
+	dynClient := &deletionErrorDynamicClient{
+		middlewareDeleteErr: errors.New("strip middleware deletion failed"),
+	}
+
+	r := &StaticSiteReconciler{
+		Client:           fakeClient,
+		DynamicClient:    dynClient,
+		Recorder:         events.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "strip-delete-error",
+			Namespace: "default",
+		},
+	}
+
+	// Reconcile should continue despite stripPrefix Middleware deletion error
+	result, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v, want nil", err)
+	}
+
+	if result.RequeueAfter != 0 {
+		t.Error("expected RequeueAfter=0 after deletion handling")
+	}
+
+	// Should have attempted to delete: ingressroute, addPrefix middleware, stripPrefix middleware
+	if len(dynClient.deletedResources) < 3 {
+		t.Errorf("expected at least 3 delete attempts (for pathPrefix site), got %d: %v", len(dynClient.deletedResources), dynClient.deletedResources)
+	}
+}
+
+// failingStatusClient wraps a real client but fails on status updates
+type failingStatusClient struct {
+	client.Client
+	statusUpdateErr error
+}
+
+func (f *failingStatusClient) Status() client.StatusWriter {
+	return &failingStatusWriter{
+		StatusWriter: f.Client.Status(),
+		err:          f.statusUpdateErr,
+	}
+}
+
+type failingStatusWriter struct {
+	client.StatusWriter
+	err error
+}
+
+func (f *failingStatusWriter) Update(ctx context.Context, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+	return f.err
+}
+
+func TestEnsureFinalizerAndToken_StatusUpdateFails(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	site := &pagesv1.StaticSite{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "status-update-fail",
+			Namespace:  "default",
+			UID:        "test-uid-status-fail",
+			Finalizers: []string{finalizerName},
+		},
+		Spec: pagesv1.StaticSiteSpec{
+			Repo: "https://github.com/example/repo.git",
+		},
+		// SyncToken is empty, so ensureFinalizerAndToken will try to set it
+	}
+
+	baseClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(site).
+		WithStatusSubresource(site).
+		Build()
+
+	failingClient := &failingStatusClient{
+		Client:          baseClient,
+		statusUpdateErr: errors.New("status update failed"),
+	}
+
+	r := &StaticSiteReconciler{
+		Client:           failingClient,
+		DynamicClient:    &fakeDynamicClient{},
+		Recorder:         events.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		ClusterIssuer:    "letsencrypt-prod",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "status-update-fail",
+			Namespace: "default",
+		},
+	}
+
+	// Reconcile should return the status update error
+	_, err := r.Reconcile(context.Background(), req)
+	if err == nil {
+		t.Fatal("Reconcile() error = nil, want error from status update")
+	}
+	if err.Error() != "status update failed" {
+		t.Errorf("Reconcile() error = %v, want 'status update failed'", err)
+	}
+}
+
+func TestSetError_StatusUpdateFails(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	// PathPrefix without domain triggers validation error which calls setError
+	site := &pagesv1.StaticSite{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "set-error-fail",
+			Namespace:  "default",
+			UID:        "test-uid-seterror-fail",
+			Finalizers: []string{finalizerName},
+		},
+		Spec: pagesv1.StaticSiteSpec{
+			Repo:       "https://github.com/example/repo.git",
+			PathPrefix: "/2019", // PathPrefix without Domain triggers validation error
+		},
+		Status: pagesv1.StaticSiteStatus{
+			SyncToken: "already-generated",
+		},
+	}
+
+	baseClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(site).
+		WithStatusSubresource(site).
+		Build()
+
+	failingClient := &failingStatusClient{
+		Client:          baseClient,
+		statusUpdateErr: errors.New("setError status update failed"),
+	}
+
+	r := &StaticSiteReconciler{
+		Client:           failingClient,
+		DynamicClient:    &fakeDynamicClient{},
+		Recorder:         events.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		ClusterIssuer:    "letsencrypt-prod",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "set-error-fail",
+			Namespace: "default",
+		},
+	}
+
+	// Reconcile should return the status update error from setError
+	_, err := r.Reconcile(context.Background(), req)
+	if err == nil {
+		t.Fatal("Reconcile() error = nil, want error from setError status update")
+	}
+	if err.Error() != "setError status update failed" {
+		t.Errorf("Reconcile() error = %v, want 'setError status update failed'", err)
+	}
+}
+
+func TestReconcile_StripPrefixMiddlewareCreationFails(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	site := &pagesv1.StaticSite{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "strip-mw-fail",
+			Namespace:  "default",
+			UID:        "test-uid-strip-fail",
+			Finalizers: []string{finalizerName},
+		},
+		Spec: pagesv1.StaticSiteSpec{
+			Repo:       "https://github.com/example/repo.git",
+			Domain:     "example.com",
+			PathPrefix: "/2019",
+		},
+		Status: pagesv1.StaticSiteStatus{
+			SyncToken: "already-generated",
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(site).
+		WithStatusSubresource(site).
+		Build()
+
+	// Use a client that fails on the second middleware creation (stripPrefix)
+	dynClient := &countingMiddlewareDynamicClient{
+		failOnMiddlewareCreate: 2, // Fail on second middleware create (stripPrefix)
+	}
+
+	r := &StaticSiteReconciler{
+		Client:           fakeClient,
+		DynamicClient:    dynClient,
+		Recorder:         events.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		ClusterIssuer:    "letsencrypt-prod",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "strip-mw-fail",
+			Namespace: "default",
+		},
+	}
+
+	_, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v, want nil (error in status)", err)
+	}
+
+	updatedSite := &pagesv1.StaticSite{}
+	err = fakeClient.Get(context.Background(), req.NamespacedName, updatedSite)
+	if err != nil {
+		t.Fatalf("failed to get site: %v", err)
+	}
+
+	if updatedSite.Status.Phase != pagesv1.PhaseError {
+		t.Errorf("Phase = %q, want %q", updatedSite.Status.Phase, pagesv1.PhaseError)
+	}
+	if updatedSite.Status.Message != "stripPrefix middleware creation failed" {
+		t.Errorf("Message = %q, want %q", updatedSite.Status.Message, "stripPrefix middleware creation failed")
+	}
+}
+
+// countingMiddlewareDynamicClient counts middleware creates and can fail on a specific one
+type countingMiddlewareDynamicClient struct {
+	middlewareCreateCount  int
+	failOnMiddlewareCreate int // Fail when count reaches this number
+}
+
+func (c *countingMiddlewareDynamicClient) Resource(resource schema.GroupVersionResource) dynamic.NamespaceableResourceInterface {
+	return &countingMiddlewareNamespaceableResource{
+		gvr:    resource,
+		client: c,
+	}
+}
+
+type countingMiddlewareNamespaceableResource struct {
+	gvr       schema.GroupVersionResource
+	namespace string
+	client    *countingMiddlewareDynamicClient
+}
+
+func (c *countingMiddlewareNamespaceableResource) Namespace(ns string) dynamic.ResourceInterface {
+	return &countingMiddlewareNamespaceableResource{
+		gvr:       c.gvr,
+		namespace: ns,
+		client:    c.client,
+	}
+}
+
+func (c *countingMiddlewareNamespaceableResource) Get(ctx context.Context, name string, opts metav1.GetOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return nil, &notFoundError{}
+}
+
+func (c *countingMiddlewareNamespaceableResource) Create(ctx context.Context, obj *unstructured.Unstructured, opts metav1.CreateOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	if c.gvr == middlewareGVR {
+		c.client.middlewareCreateCount++
+		if c.client.middlewareCreateCount == c.client.failOnMiddlewareCreate {
+			return nil, errors.New("stripPrefix middleware creation failed")
+		}
+	}
+	return obj, nil
+}
+
+func (c *countingMiddlewareNamespaceableResource) Update(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (c *countingMiddlewareNamespaceableResource) Delete(ctx context.Context, name string, opts metav1.DeleteOptions, subresources ...string) error {
+	return nil
+}
+
+func (c *countingMiddlewareNamespaceableResource) List(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+	return &unstructured.UnstructuredList{}, nil
+}
+
+func (c *countingMiddlewareNamespaceableResource) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
+	return nil, nil
+}
+
+func (c *countingMiddlewareNamespaceableResource) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return &unstructured.Unstructured{}, nil
+}
+
+func (c *countingMiddlewareNamespaceableResource) UpdateStatus(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (c *countingMiddlewareNamespaceableResource) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
+	return nil
+}
+
+func (c *countingMiddlewareNamespaceableResource) Apply(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (c *countingMiddlewareNamespaceableResource) ApplyStatus(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func TestUpdateFinalStatus_StatusUpdateFails(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	site := &pagesv1.StaticSite{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "final-status-fail",
+			Namespace:  "default",
+			UID:        "test-uid-final-fail",
+			Finalizers: []string{finalizerName},
+		},
+		Spec: pagesv1.StaticSiteSpec{
+			Repo: "https://github.com/example/repo.git",
+		},
+		Status: pagesv1.StaticSiteStatus{
+			SyncToken: "already-generated",
+		},
+	}
+
+	baseClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(site).
+		WithStatusSubresource(site).
+		Build()
+
+	// Create a client that fails only on final status update (not initial ones)
+	failingClient := &selectiveFailingStatusClient{
+		Client:      baseClient,
+		failOnPhase: pagesv1.PhaseReady,
+	}
+
+	r := &StaticSiteReconciler{
+		Client:           failingClient,
+		DynamicClient:    &fakeDynamicClient{},
+		Recorder:         events.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		ClusterIssuer:    "letsencrypt-prod",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "final-status-fail",
+			Namespace: "default",
+		},
+	}
+
+	// Reconcile should return the status update error from updateFinalStatus
+	_, err := r.Reconcile(context.Background(), req)
+	if err == nil {
+		t.Fatal("Reconcile() error = nil, want error from final status update")
+	}
+	if err.Error() != "final status update failed" {
+		t.Errorf("Reconcile() error = %v, want 'final status update failed'", err)
+	}
+}
+
+// selectiveFailingStatusClient fails status update only when phase is set to a specific value
+type selectiveFailingStatusClient struct {
+	client.Client
+	failOnPhase pagesv1.Phase
+}
+
+func (s *selectiveFailingStatusClient) Status() client.StatusWriter {
+	return &selectiveFailingStatusWriter{
+		StatusWriter: s.Client.Status(),
+		failOnPhase:  s.failOnPhase,
+	}
+}
+
+type selectiveFailingStatusWriter struct {
+	client.StatusWriter
+	failOnPhase pagesv1.Phase
+}
+
+func (s *selectiveFailingStatusWriter) Update(ctx context.Context, obj client.Object, opts ...client.SubResourceUpdateOption) error {
+	if site, ok := obj.(*pagesv1.StaticSite); ok {
+		if site.Status.Phase == s.failOnPhase {
+			return errors.New("final status update failed")
+		}
+	}
+	return s.StatusWriter.Update(ctx, obj, opts...)
+}
+
+func TestReconcile_GetSiteError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	// Create a client that returns an error on Get (not NotFound)
+	fakeClient := &getErrorClient{
+		err: errors.New("connection refused"),
+	}
+
+	r := &StaticSiteReconciler{
+		Client:           fakeClient,
+		DynamicClient:    &fakeDynamicClient{},
+		Recorder:         events.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "error-site",
+			Namespace: "default",
+		},
+	}
+
+	// Reconcile should return the Get error
+	_, err := r.Reconcile(context.Background(), req)
+	if err == nil {
+		t.Fatal("Reconcile() error = nil, want error from Get")
+	}
+	if err.Error() != "connection refused" {
+		t.Errorf("Reconcile() error = %v, want 'connection refused'", err)
+	}
+}
+
+// getErrorClient returns an error on Get operations
+type getErrorClient struct {
+	client.Client
+	err error
+}
+
+func (g *getErrorClient) Get(ctx context.Context, key client.ObjectKey, obj client.Object, opts ...client.GetOption) error {
+	return g.err
+}
+
+func TestCreateOrUpdateMiddleware_GetError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	site := &pagesv1.StaticSite{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "mw-get-error",
+			Namespace:  "default",
+			UID:        "test-uid-mw-get-err",
+			Finalizers: []string{finalizerName},
+		},
+		Spec: pagesv1.StaticSiteSpec{
+			Repo: "https://github.com/example/repo.git",
+		},
+		Status: pagesv1.StaticSiteStatus{
+			SyncToken: "already-generated",
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(site).
+		WithStatusSubresource(site).
+		Build()
+
+	// Use a dynamic client that returns a non-NotFound error on Get for middleware
+	dynClient := &getErrorDynamicClient{
+		middlewareGetErr: errors.New("middleware get failed"),
+	}
+
+	r := &StaticSiteReconciler{
+		Client:           fakeClient,
+		DynamicClient:    dynClient,
+		Recorder:         events.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		ClusterIssuer:    "letsencrypt-prod",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "mw-get-error",
+			Namespace: "default",
+		},
+	}
+
+	_, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v, want nil (error in status)", err)
+	}
+
+	updatedSite := &pagesv1.StaticSite{}
+	err = fakeClient.Get(context.Background(), req.NamespacedName, updatedSite)
+	if err != nil {
+		t.Fatalf("failed to get site: %v", err)
+	}
+
+	if updatedSite.Status.Phase != pagesv1.PhaseError {
+		t.Errorf("Phase = %q, want %q", updatedSite.Status.Phase, pagesv1.PhaseError)
+	}
+	if updatedSite.Status.Message != "middleware get failed" {
+		t.Errorf("Message = %q, want %q", updatedSite.Status.Message, "middleware get failed")
+	}
+}
+
+// getErrorDynamicClient returns errors on Get for specific resources
+type getErrorDynamicClient struct {
+	middlewareGetErr    error
+	ingressRouteGetErr  error
+	certificateGetErr   error
+}
+
+func (g *getErrorDynamicClient) Resource(resource schema.GroupVersionResource) dynamic.NamespaceableResourceInterface {
+	return &getErrorNamespaceableResource{
+		gvr:    resource,
+		client: g,
+	}
+}
+
+type getErrorNamespaceableResource struct {
+	gvr       schema.GroupVersionResource
+	namespace string
+	client    *getErrorDynamicClient
+}
+
+func (g *getErrorNamespaceableResource) Namespace(ns string) dynamic.ResourceInterface {
+	return &getErrorNamespaceableResource{
+		gvr:       g.gvr,
+		namespace: ns,
+		client:    g.client,
+	}
+}
+
+func (g *getErrorNamespaceableResource) Get(ctx context.Context, name string, opts metav1.GetOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	if g.gvr == middlewareGVR && g.client.middlewareGetErr != nil {
+		return nil, g.client.middlewareGetErr
+	}
+	if g.gvr == ingressRouteGVR && g.client.ingressRouteGetErr != nil {
+		return nil, g.client.ingressRouteGetErr
+	}
+	if g.gvr == certificateGVR && g.client.certificateGetErr != nil {
+		return nil, g.client.certificateGetErr
+	}
+	return nil, &notFoundError{}
+}
+
+func (g *getErrorNamespaceableResource) Create(ctx context.Context, obj *unstructured.Unstructured, opts metav1.CreateOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (g *getErrorNamespaceableResource) Update(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (g *getErrorNamespaceableResource) Delete(ctx context.Context, name string, opts metav1.DeleteOptions, subresources ...string) error {
+	return nil
+}
+
+func (g *getErrorNamespaceableResource) List(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+	return &unstructured.UnstructuredList{}, nil
+}
+
+func (g *getErrorNamespaceableResource) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
+	return nil, nil
+}
+
+func (g *getErrorNamespaceableResource) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return &unstructured.Unstructured{}, nil
+}
+
+func (g *getErrorNamespaceableResource) UpdateStatus(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (g *getErrorNamespaceableResource) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
+	return nil
+}
+
+func (g *getErrorNamespaceableResource) Apply(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (g *getErrorNamespaceableResource) ApplyStatus(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func TestReconcileIngressRoute_GetError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	site := &pagesv1.StaticSite{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "ir-get-error",
+			Namespace:  "default",
+			UID:        "test-uid-ir-get-err",
+			Finalizers: []string{finalizerName},
+		},
+		Spec: pagesv1.StaticSiteSpec{
+			Repo: "https://github.com/example/repo.git",
+		},
+		Status: pagesv1.StaticSiteStatus{
+			SyncToken: "already-generated",
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(site).
+		WithStatusSubresource(site).
+		Build()
+
+	// Use a dynamic client that returns a non-NotFound error on Get for IngressRoute
+	dynClient := &getErrorDynamicClient{
+		ingressRouteGetErr: errors.New("ingressroute get failed"),
+	}
+
+	r := &StaticSiteReconciler{
+		Client:           fakeClient,
+		DynamicClient:    dynClient,
+		Recorder:         events.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		ClusterIssuer:    "letsencrypt-prod",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "ir-get-error",
+			Namespace: "default",
+		},
+	}
+
+	_, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v, want nil (error in status)", err)
+	}
+
+	updatedSite := &pagesv1.StaticSite{}
+	err = fakeClient.Get(context.Background(), req.NamespacedName, updatedSite)
+	if err != nil {
+		t.Fatalf("failed to get site: %v", err)
+	}
+
+	if updatedSite.Status.Phase != pagesv1.PhaseError {
+		t.Errorf("Phase = %q, want %q", updatedSite.Status.Phase, pagesv1.PhaseError)
+	}
+	if updatedSite.Status.Message != "ingressroute get failed" {
+		t.Errorf("Message = %q, want %q", updatedSite.Status.Message, "ingressroute get failed")
+	}
+}
+
+func TestReconcileCertificate_GetError(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	site := &pagesv1.StaticSite{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "cert-get-error",
+			Namespace:  "default",
+			UID:        "test-uid-cert-get-err",
+			Finalizers: []string{finalizerName},
+		},
+		Spec: pagesv1.StaticSiteSpec{
+			Repo:   "https://github.com/example/repo.git",
+			Domain: "custom.example.com",
+		},
+		Status: pagesv1.StaticSiteStatus{
+			SyncToken: "already-generated",
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(site).
+		WithStatusSubresource(site).
+		Build()
+
+	// Use a dynamic client that returns a non-NotFound error on Get for Certificate
+	dynClient := &getErrorDynamicClient{
+		certificateGetErr: errors.New("certificate get failed"),
+	}
+
+	r := &StaticSiteReconciler{
+		Client:           fakeClient,
+		DynamicClient:    dynClient,
+		Recorder:         events.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		ClusterIssuer:    "letsencrypt-prod",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "cert-get-error",
+			Namespace: "default",
+		},
+	}
+
+	_, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v, want nil (error in status)", err)
+	}
+
+	updatedSite := &pagesv1.StaticSite{}
+	err = fakeClient.Get(context.Background(), req.NamespacedName, updatedSite)
+	if err != nil {
+		t.Fatalf("failed to get site: %v", err)
+	}
+
+	if updatedSite.Status.Phase != pagesv1.PhaseError {
+		t.Errorf("Phase = %q, want %q", updatedSite.Status.Phase, pagesv1.PhaseError)
+	}
+	if updatedSite.Status.Message != "certificate get failed" {
+		t.Errorf("Message = %q, want %q", updatedSite.Status.Message, "certificate get failed")
 	}
 }
