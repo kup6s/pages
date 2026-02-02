@@ -73,7 +73,7 @@ func main() {
 	if err = (&controller.StaticSiteReconciler{
 		Client:           mgr.GetClient(),
 		DynamicClient:    dynamicClient,
-		Recorder:         mgr.GetEventRecorderFor("staticsite-controller"),
+		Recorder:         mgr.GetEventRecorderFor("staticsite-controller"), //nolint:staticcheck // #34: Migration to new events API
 		PagesDomain:      pagesDomain,
 		ClusterIssuer:    clusterIssuer,
 		NginxNamespace:   nginxNamespace,
