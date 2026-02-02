@@ -35,6 +35,8 @@ Complete reference for all Helm chart configuration options.
 | `operator.image.pullPolicy` | `IfNotPresent` | Image pull policy |
 | `operator.pagesDomain` | `pages.kup6s.com` | Pages domain for auto-generated site URLs |
 | `operator.clusterIssuer` | `letsencrypt-prod` | cert-manager ClusterIssuer name |
+| `operator.pagesTlsMode` | `individual` | TLS mode for auto-generated domains: `individual` (HTTP-01 per site) or `wildcard` (pre-existing wildcard cert) |
+| `operator.pagesWildcardSecret` | `pages-wildcard-tls` | Secret name for wildcard certificate (only used when `pagesTlsMode=wildcard`) |
 | `operator.metricsBindAddress` | `:8080` | Metrics bind address |
 | `operator.healthProbeBindAddress` | `:8081` | Health probe bind address |
 | `operator.extraArgs` | `[]` | Additional CLI arguments |

@@ -15,8 +15,19 @@ Command-line flags for the operator and syncer components.
 | `--cluster-issuer` | `letsencrypt-prod` | cert-manager ClusterIssuer name |
 | `--nginx-namespace` | `kup6s-pages` | Namespace where nginx service runs |
 | `--nginx-service-name` | `kup6s-pages-nginx` | Name of the nginx service |
+| `--pages-tls-mode` | `individual` | TLS mode for auto-generated domains: `individual` or `wildcard` |
+| `--pages-wildcard-secret` | `pages-wildcard-tls` | Secret name for wildcard certificate (only used with `--pages-tls-mode=wildcard`) |
 | `--metrics-bind-address` | `:8080` | Metrics endpoint |
 | `--health-probe-bind-address` | `:8081` | Health probe endpoint |
+
+### TLS Modes
+
+| Mode | Description |
+|------|-------------|
+| `individual` | Creates a Certificate per site using HTTP-01 challenge. Works without DNS provider API access. |
+| `wildcard` | References a pre-existing wildcard certificate. Requires external DNS-01 setup for wildcard cert issuance. |
+
+> **Note:** Wildcard mode requires a pre-existing `*.{pagesDomain}` certificate. This must be created externally using DNS-01 challenge, as Let's Encrypt doesn't support wildcard certs via HTTP-01.
 
 ### Example
 
@@ -25,7 +36,8 @@ go run ./cmd/operator \
   --pages-domain=pages.example.com \
   --cluster-issuer=letsencrypt-prod \
   --nginx-namespace=kup6s-pages \
-  --nginx-service-name=kup6s-pages-nginx
+  --nginx-service-name=kup6s-pages-nginx \
+  --pages-tls-mode=individual
 ```
 
 ## Syncer Flags
