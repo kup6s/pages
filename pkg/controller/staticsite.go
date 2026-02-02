@@ -35,6 +35,15 @@ var randReader io.Reader = rand.Reader
 const (
 	finalizerName         = "pages.kup6s.com/finalizer"
 	maxK8sResourceNameLen = 63
+
+	// defaultTokenLength is the length of generated sync tokens
+	defaultTokenLength = 32
+
+	// statusCheckInterval is how often to requeue for status updates
+	statusCheckInterval = 5 * time.Minute
+
+	// errorRetryInterval is how long to wait before retrying after an error
+	errorRetryInterval = 30 * time.Second
 )
 
 // truncateK8sName truncates a name to the Kubernetes resource name length limit
@@ -168,7 +177,7 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// 4. Generate sync token if not present
 	if site.Status.SyncToken == "" {
-		token, err := generateSecureToken(32)
+		token, err := generateSecureToken(defaultTokenLength)
 		if err != nil {
 			return r.setError(ctx, site, "TokenGenerationFailed", err)
 		}
@@ -239,8 +248,7 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	r.Recorder.Eventf(site, nil, "Normal", "Configured", "ConfigureIngress", "Site configured at %s", site.Status.URL)
 
-	// Requeue after 5 minutes for status check
-	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
+	return ctrl.Result{RequeueAfter: statusCheckInterval}, nil
 }
 
 // reconcileMiddleware creates the Traefik Middlewares
@@ -689,8 +697,7 @@ func (r *StaticSiteReconciler) setError(ctx context.Context, site *pagesv1.Stati
 		return ctrl.Result{}, updateErr
 	}
 	
-	// Retry after 30 seconds
-	return ctrl.Result{RequeueAfter: 30 * time.Second}, nil
+	return ctrl.Result{RequeueAfter: errorRetryInterval}, nil
 }
 
 // SetupWithManager registers the controller
