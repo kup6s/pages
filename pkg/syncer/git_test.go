@@ -2,6 +2,7 @@ package syncer
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -368,6 +369,104 @@ func TestDeleteSite(t *testing.T) {
 			repoPath := filepath.Join(tmpDir, ".repos", tt.siteName)
 			if _, err := os.Stat(repoPath); !os.IsNotExist(err) {
 				t.Errorf("repo path still exists: %s", repoPath)
+			}
+		})
+	}
+}
+
+func TestUpdateStatusJSONEscaping(t *testing.T) {
+	tests := []struct {
+		name    string
+		phase   string
+		message string
+		commit  string
+	}{
+		{
+			name:    "simple message",
+			phase:   "Ready",
+			message: "Synced successfully",
+			commit:  "abc123",
+		},
+		{
+			name:    "message with quotes",
+			phase:   "Error",
+			message: `Failed: "invalid" config`,
+			commit:  "",
+		},
+		{
+			name:    "message with newlines",
+			phase:   "Error",
+			message: "Line 1\nLine 2\nLine 3",
+			commit:  "",
+		},
+		{
+			name:    "message with backslashes",
+			phase:   "Error",
+			message: `Path: C:\Users\test`,
+			commit:  "",
+		},
+		{
+			name:    "message with special chars",
+			phase:   "Error",
+			message: "Error: {\"code\": 500, \"msg\": \"fail\"}",
+			commit:  "",
+		},
+		{
+			name:    "message with tabs and unicode",
+			phase:   "Error",
+			message: "Tab:\there, Unicode: \u2603",
+			commit:  "",
+		},
+		{
+			name:    "message with control characters",
+			phase:   "Error",
+			message: "Control: \x1f and null: \x00",
+			commit:  "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeClient := &fakeDynamicClient{activeSites: []string{"test-site"}}
+			s := &Syncer{
+				DynamicClient: fakeClient,
+			}
+
+			site := &staticSiteData{
+				Name:      "test-site",
+				Namespace: "default",
+			}
+
+			ctx := context.Background()
+			s.updateStatus(ctx, site, tt.phase, tt.message, tt.commit)
+
+			// Verify the patch is valid JSON
+			if fakeClient.lastPatch == nil {
+				t.Fatal("no patch was sent")
+			}
+
+			var parsed map[string]interface{}
+			if err := json.Unmarshal(fakeClient.lastPatch, &parsed); err != nil {
+				t.Fatalf("patch is not valid JSON: %v\npatch: %s", err, string(fakeClient.lastPatch))
+			}
+
+			// Verify the status fields
+			status, ok := parsed["status"].(map[string]interface{})
+			if !ok {
+				t.Fatalf("status field missing or invalid: %v", parsed)
+			}
+
+			if got := status["phase"]; got != tt.phase {
+				t.Errorf("phase = %v, want %v", got, tt.phase)
+			}
+			if got := status["message"]; got != tt.message {
+				t.Errorf("message = %v, want %v", got, tt.message)
+			}
+			if got := status["lastCommit"]; got != tt.commit {
+				t.Errorf("lastCommit = %v, want %v", got, tt.commit)
+			}
+			if _, ok := status["lastSync"]; !ok {
+				t.Error("lastSync field missing")
 			}
 		})
 	}
