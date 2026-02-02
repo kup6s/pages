@@ -223,7 +223,14 @@ nginx:
   podSecurityContext: {}
 
   # -- Container security context
-  securityContext: {}
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 101
+    capabilities:
+      drop:
+        - ALL
 
   # -- Resource requests and limits
   resources:

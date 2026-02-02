@@ -44,6 +44,10 @@ spec:
               readOnly: true
             - name: nginx-config
               mountPath: /etc/nginx/conf.d
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
           {{- with .Values.nginx.livenessProbe }}
           livenessProbe:
             {{- toYaml . | nindent 12 }}
@@ -67,6 +71,10 @@ spec:
         - name: nginx-config
           configMap:
             name: {{ include "kup6s-pages.fullname" . }}-nginx
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
       {{- with .Values.nginx.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
