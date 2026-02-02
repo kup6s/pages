@@ -105,9 +105,29 @@ spec:
                         type: string
                       message:
                         type: string
+                      observedGeneration:
+                        type: integer
+                        format: int64
+                        description: Generation of the resource when this condition was observed
                 syncToken:
                   type: string
                   description: Token for authenticating /sync and /site API calls
+                resources:
+                  type: object
+                  description: References to managed Kubernetes resources
+                  properties:
+                    ingressRoute:
+                      type: string
+                      description: namespace/name of the Traefik IngressRoute
+                    middleware:
+                      type: string
+                      description: namespace/name of the addPrefix Middleware
+                    stripMiddleware:
+                      type: string
+                      description: namespace/name of the stripPrefix Middleware (when pathPrefix is set)
+                    certificate:
+                      type: string
+                      description: namespace/name of the Certificate (when custom domain is set)
       subresources:
         status: {}
       additionalPrinterColumns:
