@@ -1,0 +1,112 @@
+suite: nginx configmap tests
+templates:
+  - templates/configmap-nginx.yaml
+tests:
+  - it: should render ConfigMap with default values
+    asserts:
+      - isKind:
+          of: ConfigMap
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-kup6s-pages-nginx
+
+  - it: should have nginx component label
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: nginx
+
+  - it: should contain default.conf key
+    asserts:
+      - isNotEmpty:
+          path: data["default.conf"]
+
+  - it: should have server block listening on port 80
+    asserts:
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: "listen 80;"
+
+  - it: should have health check endpoint
+    asserts:
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: "location /health"
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: 'return 200 "ok'
+
+  - it: should serve files from /sites root
+    asserts:
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: "root /sites;"
+
+  - it: should have try_files directive with index.html fallback
+    asserts:
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: 'try_files \$uri \$uri/ \$uri/index\.html =404;'
+
+  - it: should cache static assets
+    asserts:
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: "expires 1y;"
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: 'Cache-Control.*public.*immutable'
+
+  - it: should have custom 404 error page
+    asserts:
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: "error_page 404 /404.html;"
+
+  - it: should enable gzip compression
+    asserts:
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: "gzip on;"
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: "gzip_types"
+
+  - it: should use custom config when provided
+    set:
+      nginx:
+        customConfig: |
+          server {
+              listen 8080;
+              server_name custom.example.com;
+              root /custom;
+          }
+    asserts:
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: "listen 8080;"
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: "server_name custom.example.com;"
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: "root /custom;"
+      - notMatchRegex:
+          path: data["default.conf"]
+          pattern: "root /sites;"
+
+  - it: should use custom namespace
+    set:
+      namespace: custom-namespace
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: custom-namespace
+
+  - it: should respect fullnameOverride
+    set:
+      fullnameOverride: my-pages
+    asserts:
+      - equal:
+          path: metadata.name
+          value: my-pages-nginx
