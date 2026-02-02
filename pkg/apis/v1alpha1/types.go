@@ -107,6 +107,30 @@ type StaticSiteStatus struct {
 	// Auto-generated on first reconcile
 	// +optional
 	SyncToken string `json:"syncToken,omitempty"`
+
+	// Resources shows the generated Kubernetes resources for this site
+	// Provides visibility since resources are created in the system namespace
+	// +optional
+	Resources *ManagedResources `json:"resources,omitempty"`
+}
+
+// ManagedResources tracks the Kubernetes resources created for a StaticSite
+type ManagedResources struct {
+	// IngressRoute is the namespace/name of the Traefik IngressRoute
+	// +optional
+	IngressRoute string `json:"ingressRoute,omitempty"`
+
+	// Middleware is the namespace/name of the addPrefix Middleware
+	// +optional
+	Middleware string `json:"middleware,omitempty"`
+
+	// StripMiddleware is the namespace/name of the stripPrefix Middleware (if pathPrefix is set)
+	// +optional
+	StripMiddleware string `json:"stripMiddleware,omitempty"`
+
+	// Certificate is the namespace/name of the cert-manager Certificate (if custom domain)
+	// +optional
+	Certificate string `json:"certificate,omitempty"`
 }
 
 // Phase describes the lifecycle status

@@ -1,0 +1,31 @@
+{{- if .Values.rbac.create }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "kup6s-pages.fullname" . }}-operator
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kup6s-pages.operator.labels" . | nindent 4 }}
+# Role Rationale:
+# All generated resources are created in the system namespace only.
+# This limits the blast radius - a compromised operator can only affect
+# resources in this namespace, not user namespaces.
+# See docs/SECURITY.md for detailed RBAC documentation.
+rules:
+  # Traefik IngressRoutes and Middlewares
+  # Created in system namespace with labels for tracking.
+  - apiGroups: ["traefik.io"]
+    resources: ["ingressroutes", "middlewares"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # cert-manager Certificates
+  # Created in system namespace. Shared across sites with same domain.
+  - apiGroups: ["cert-manager.io"]
+    resources: ["certificates"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # Coordination Leases - for leader election
+  - apiGroups: ["coordination.k8s.io"]
+    resources: ["leases"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+{{- end }}

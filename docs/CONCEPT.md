@@ -112,49 +112,55 @@ The `metadata.name` is central: It defines the path under which the site is loca
 
 #### 2. Operator
 
-The Operator watches StaticSite resources and creates for each:
+The Operator watches StaticSite resources across all namespaces and creates resources
+in the **system namespace** (kup6s-pages) for improved security:
 
-**Traefik Middleware (addPrefix)**
+**Traefik Middleware (addPrefix)** - created in system namespace
 ```yaml
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
-  name: customer-website-prefix
+  name: pages--customer-website-prefix  # Prefixed with source namespace
+  namespace: kup6s-pages                # System namespace
+  labels:
+    pages.kup6s.com/site-namespace: pages
+    pages.kup6s.com/site-name: customer-website
 spec:
   addPrefix:
     prefix: /customer-website
 ```
 
-**Traefik IngressRoute**
+**Traefik IngressRoute** - created in system namespace
 ```yaml
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
-  name: customer-website
+  name: pages--customer-website         # Prefixed with source namespace
+  namespace: kup6s-pages                # System namespace
 spec:
   entryPoints: [websecure]
   routes:
     - match: Host(`www.customer.com`)
       middlewares:
-        - name: customer-website-prefix
+        - name: pages--customer-website-prefix
+          namespace: kup6s-pages
       services:
-        - name: pages-nginx-proxy  # ExternalName service pointing to nginx
-          namespace: pages         # Same namespace as IngressRoute
+        - name: kup6s-pages-nginx       # Direct reference (same namespace)
+          namespace: kup6s-pages
           port: 80
   tls:
-    secretName: customer-website-tls
+    secretName: www-customer-com-tls
 ```
 
-Note: The IngressRoute references a local `pages-nginx-proxy` ExternalName service (created by the operator) instead of the nginx service directly. This is required because Traefik doesn't allow cross-namespace service references by default.
-
-**cert-manager Certificate** (only for custom domains)
+**cert-manager Certificate** (only for custom domains) - created in system namespace
 ```yaml
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: customer-website-tls
+  name: www-customer-com-tls
+  namespace: kup6s-pages
 spec:
-  secretName: customer-website-tls
+  secretName: www-customer-com-tls
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
@@ -162,7 +168,8 @@ spec:
     - www.customer.com
 ```
 
-The Operator sets Owner References so that all created resources are automatically deleted when the StaticSite is deleted.
+The Operator uses finalizers to ensure cleanup when StaticSites are deleted.
+Resource references are visible in the StaticSite status for user visibility.
 
 #### 3. Syncer
 
@@ -314,8 +321,8 @@ The addPrefix pattern eliminates the need to reconfigure nginx for each new site
 
 - **Traefik**: Standard IngressController, full feature support
 - **cert-manager**: Automatic TLS certificates, also for custom domains
-- **RBAC**: Fine-grained permissions
-- **Owner References**: Automatic cleanup
+- **RBAC**: Minimal cluster-wide permissions (read-only StaticSites)
+- **Finalizers**: Explicit cleanup when StaticSites are deleted
 
 ### Easy Extensibility
 
@@ -340,19 +347,24 @@ Namespace: kup6s-pages (System)
 ├── Service: pages-syncer (for webhooks)
 ├── PVC: static-sites-data
 ├── ConfigMap: nginx-config
-└── ServiceAccounts + RBAC
+├── ServiceAccounts + RBAC
+│
+│ Generated resources (all in system namespace):
+├── IngressRoute: pages--customer-a-website (generated)
+├── IngressRoute: pages--customer-b-docs (generated)
+├── Middleware: pages--customer-a-website-prefix (generated)
+├── Middleware: pages--customer-b-docs-prefix (generated)
+├── Certificate: www-customer-a-com-tls (generated)
+└── Certificate: docs-customer-b-com-tls (generated)
 
 Namespace: pages (User Sites)
 ├── StaticSite: customer-a-website
 ├── StaticSite: customer-b-docs
-├── Secret: git-credentials (optional)
-├── IngressRoute: customer-a-website (generated)
-├── IngressRoute: customer-b-docs (generated)
-├── Middleware: customer-a-website-prefix (generated)
-├── Middleware: customer-b-docs-prefix (generated)
-├── Certificate: customer-a-website-tls (generated)
-└── Certificate: customer-b-docs-tls (generated)
+└── Secret: git-credentials (optional)
 ```
+
+Note: All generated Traefik and cert-manager resources are created in the system
+namespace for improved security. Users can see resource references via `status.resources`.
 
 ## Limitations
 
