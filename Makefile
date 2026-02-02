@@ -87,3 +87,11 @@ tidy:
 clean:
 	rm -rf bin/
 	rm -rf tmp/
+
+## Documentation
+
+docs-build:
+	hugo --source docs --minify
+
+docs-serve:
+	hugo server --source docs

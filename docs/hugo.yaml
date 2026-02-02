@@ -1,0 +1,45 @@
+baseURL: https://pages-docs.sites.kup6s.com/
+title: kup6s-pages
+theme: github.com/alex-shpak/hugo-book
+
+# Hugo module configuration (replaces git submodules)
+module:
+  imports:
+    - path: github.com/alex-shpak/hugo-book
+
+# Build settings
+enableGitInfo: true
+defaultContentLanguage: en
+
+# Theme settings
+params:
+  BookTheme: auto
+  BookToC: true
+  BookSection: /
+  BookRepo: https://github.com/kup6s/pages
+  BookEditPath: edit/main/docs/content
+  BookDateFormat: January 2, 2006
+  BookSearch: true
+  BookComments: false
+
+# Menu configuration
+menu:
+  after:
+    - name: GitHub
+      url: https://github.com/kup6s/pages
+      weight: 10
+
+# Markup settings
+markup:
+  goldmark:
+    renderer:
+      unsafe: true
+  highlight:
+    style: github
+    lineNos: false
+
+# Output formats
+outputs:
+  home:
+    - HTML
+    - RSS

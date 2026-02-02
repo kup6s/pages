@@ -85,3 +85,17 @@ jobs:
             echo "Testing with $values"
             helm template test charts/kup6s-pages -f "$values" | kubeconform -strict -summary -skip CustomResourceDefinition,IngressRoute,Middleware,Certificate
           done
+
+  docs-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Hugo
+        uses: peaceiris/actions-hugo@v3
+        with:
+          hugo-version: 'latest'
+          extended: true
+
+      - name: Build docs
+        run: hugo --source docs --minify
