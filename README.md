@@ -1,117 +1,30 @@
 # kup6s-pages
 
-Cloud native multi-tenant static web-hosting.
+Cloud native multi-tenant static web-hosting for Kubernetes.
 
 ## Overview
 
-kup6s-pages deploys static websites from Git repositories to Kubernetes. A single nginx pod serves all sites efficiently, with Traefik handling routing via `addPrefix` middleware. The operator automatically manages IngressRoutes and TLS certificates - no manual ingress configuration needed.
+kup6s-pages deploys static websites from Git repositories to Kubernetes. A single nginx pod serves all sites efficiently, with Traefik handling routing via `addPrefix` middleware. The operator automatically manages IngressRoutes and TLS certificates.
 
 **Key Features:**
+
 - Single nginx pod for all sites (no per-site overhead)
 - CRD-based declarative configuration
 - Automatic TLS via cert-manager
 - Traefik IngressRoute integration
-- Git-based deployments (Forgejo, GitLab, GitHub)
-- Webhook support for instant updates on push
+- Git-based deployments with webhook support
 - Private repository support via deploy tokens
-- Subpath support for build outputs (e.g., `/dist`)
-- Path prefix support for multiple repos on same domain
 
-## Architecture
-
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                           Request Flow                                   │
-├──────────────────────────────────────────────────────────────────────────┤
-│                                                                          │
-│   https://www.customer.com/about.html                                    │
-│            │                                                             │
-│            ▼                                                             │
-│   ┌─────────────────┐                                                    │
-│   │     Traefik     │  Host(`www.customer.com`) matched                  │
-│   │                 │  Middleware: addPrefix(/customer-website)          │
-│   └────────┬────────┘                                                    │
-│            │  /customer-website/about.html                               │
-│            ▼                                                             │
-│   ┌─────────────────┐                                                    │
-│   │  nginx (1 Pod)  │  root /sites;                                      │
-│   │                 │  serves /sites/customer-website/about.html         │
-│   └────────┬────────┘                                                    │
-│            │                                                             │
-│            ▼                                                             │
-│   ┌─────────────────────────────────────┐                                │
-│   │  PVC: /sites                        │                                │
-│   │  ├── customer-website/ ← from repo  │                                │
-│   │  ├── user-blog/                     │                                │
-│   └─────────────────────────────────────┘                                │
-│                                                                          │
-└──────────────────────────────────────────────────────────────────────────┘
-```
-
-### Components
-
-| Component | Description |
-|-----------|-------------|
-| **Operator** | Watches StaticSite CRDs, creates IngressRoutes, Middlewares, and Certificates |
-| **Syncer** | Clones/pulls Git repos to shared PVC, handles webhooks |
-| **nginx** | Serves static files from the shared PVC |
-
-## Prerequisites
-
-- Kubernetes cluster with:
-  - [Traefik](https://traefik.io/) as Ingress Controller
-  - [cert-manager](https://cert-manager.io/) for TLS certificates
-  - A RWX-capable StorageClass (e.g., Longhorn, NFS)
-- A ClusterIssuer configured (e.g., `letsencrypt-prod`)
-
-## Installation
-
-### Via Helm (Recommended)
+## Quick Start
 
 ```bash
-# Install from OCI registry
-helm install pages oci://ghcr.io/kup6s/kup6s-pages --version 0.1.0
-
-# Or with custom configuration
+# Install
 helm install pages oci://ghcr.io/kup6s/kup6s-pages \
   --set operator.pagesDomain=pages.example.com \
-  --set operator.clusterIssuer=letsencrypt-prod \
-  --set 'syncer.allowedHosts={github.com,gitlab.com}' \
-  --set storage.storageClassName=longhorn \
-  --set webhook.enabled=true \
-  --set webhook.domain=webhook.pages.example.com
-```
+  --set 'syncer.allowedHosts={github.com}'
 
-#### Key Helm Values
-
-| Value | Default | Description |
-|-------|---------|-------------|
-| `operator.pagesDomain` | `pages.kup6s.com` | Base domain for auto-generated URLs |
-| `operator.clusterIssuer` | `letsencrypt-prod` | cert-manager ClusterIssuer |
-| `syncer.allowedHosts` | **Required** | Allowed Git hosts (SSRF protection) |
-| `storage.size` | `10Gi` | PVC size for sites |
-| `storage.storageClassName` | (default) | StorageClass (must support RWX) |
-| `nginx.replicas` | `2` | nginx replicas for HA |
-| `webhook.enabled` | `false` | Enable webhook IngressRoute |
-| `webhook.domain` | `webhook.pages.kup6s.com` | Webhook endpoint domain |
-
-See [charts/kup6s-pages/values.yaml](charts/kup6s-pages/values.yaml) for all options.
-
-### Verify Installation
-
-```bash
-# Check operator and syncer are running
-kubectl get pods -n kup6s-pages
-
-# Check CRD is registered
-kubectl get crd staticsites.pages.kup6s.com
-```
-
-## Usage
-
-### Basic Site (Public Repository)
-
-```yaml
+# Deploy a site
+kubectl apply -f - <<EOF
 apiVersion: pages.kup6s.com/v1alpha1
 kind: StaticSite
 metadata:
@@ -120,383 +33,31 @@ metadata:
 spec:
   repo: https://github.com/user/my-website.git
   domain: www.example.com
+EOF
+
+# Check status
+kubectl get staticsites -n pages
 ```
 
-The operator will:
-1. Create a Traefik Middleware (`my-website-prefix`) with `addPrefix: /my-website`
-2. Create a Traefik IngressRoute for `Host(\`www.example.com\`)`
-3. Create a cert-manager Certificate for the domain
-4. The Syncer clones the repo to `/sites/my-website/`
+## Documentation
 
-### Site with Build Output Subpath
+Full documentation: https://pages-docs.sites.kup6s.com
 
-For sites with build tools (Vite, Hugo, Sphinx, etc.) where the output is in a subdirectory:
-
-```yaml
-apiVersion: pages.kup6s.com/v1alpha1
-kind: StaticSite
-metadata:
-  name: docs
-  namespace: pages
-spec:
-  repo: https://github.com/user/docs.git
-  branch: main
-  path: /dist          # Serve only the /dist directory
-  domain: docs.example.com
-```
-
-The Syncer clones to `/sites/.repos/docs/` and creates a symlink `/sites/docs/` → `/sites/.repos/docs/dist/`.
-
-### Private Repository with Deploy Token
-
-For private repositories, you need to:
-1. Grant the syncer access to secrets in your namespace
-2. Create a secret with your Git credentials
-3. Reference the secret in your StaticSite
-
-**Step 1: Grant syncer access (RBAC)**
-
-The syncer does not have cluster-wide secret access. You must grant it access to read secrets in your namespace:
-
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: pages-syncer-secrets
-  namespace: pages           # Your namespace
-rules:
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get"]
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: pages-syncer-secrets
-  namespace: pages           # Your namespace
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: pages-syncer-secrets
-subjects:
-  - kind: ServiceAccount
-    name: kup6s-pages-syncer # Syncer ServiceAccount (adjust if using custom release name)
-    namespace: kup6s-pages   # Syncer namespace
-```
-
-**Step 2: Create a Secret with your deploy token**
-
-```yaml
-apiVersion: v1
-kind: Secret
-metadata:
-  name: my-repo-token
-  namespace: pages
-type: Opaque
-stringData:
-  password: "glpat-xxxxxxxxxxxx"  # Your Forgejo/GitLab/GitHub token
-  username: "git"                 # Optional, defaults to "git"
-```
-
-**Step 3: Reference the Secret in your StaticSite**
-
-```yaml
-apiVersion: pages.kup6s.com/v1alpha1
-kind: StaticSite
-metadata:
-  name: internal-docs
-  namespace: pages
-spec:
-  repo: https://forgejo.example.com/org/private-repo.git
-  domain: docs.internal.example.com
-  secretRef:
-    name: my-repo-token
-    key: password           # Optional, defaults to "password"
-```
-
-The Secret must be in the same namespace as the StaticSite. Without the RBAC setup, syncing will fail with "permission denied".
-
-### Auto-Generated Domain
-
-If no `domain` is specified, the site gets a subdomain of the configured pages domain:
-
-```yaml
-apiVersion: pages.kup6s.com/v1alpha1
-kind: StaticSite
-metadata:
-  name: my-project
-  namespace: pages
-spec:
-  repo: https://github.com/user/my-project.git
-  # No domain specified → https://my-project.pages.kup6s.com
-```
-
-### Multiple Sites on Same Domain (Path Prefix)
-
-Serve multiple repositories under different paths of the same domain:
-
-```yaml
-apiVersion: pages.kup6s.com/v1alpha1
-kind: StaticSite
-metadata:
-  name: archive-2019
-  namespace: pages
-spec:
-  repo: https://github.com/org/archive-2019.git
-  domain: www.example.com
-  pathPrefix: /2019
----
-apiVersion: pages.kup6s.com/v1alpha1
-kind: StaticSite
-metadata:
-  name: archive-2020
-  namespace: pages
-spec:
-  repo: https://github.com/org/archive-2020.git
-  domain: www.example.com
-  pathPrefix: /2020
-```
-
-Both sites share the same TLS certificate. Requests to:
-- `https://www.example.com/2019/` → served from archive-2019 repo
-- `https://www.example.com/2020/` → served from archive-2020 repo
-
-**Note:** `pathPrefix` requires a custom `domain` to be set.
-
-## CRD Reference
-
-### StaticSite Spec
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `repo` | string | Yes | - | Git repository URL (HTTPS) |
-| `branch` | string | No | `main` | Git branch to track |
-| `path` | string | No | `/` | Subpath in repo to serve |
-| `pathPrefix` | string | No | - | URL path prefix (requires domain) |
-| `domain` | string | No | `<name>.<pages-domain>` | Custom domain |
-| `secretRef.name` | string | No | - | Secret name with Git credentials |
-| `secretRef.key` | string | No | `password` | Key in Secret for the token |
-| `syncInterval` | string | No | `5m` | How often to pull updates |
-
-### StaticSite Status
-
-| Field | Description |
-|-------|-------------|
-| `phase` | `Pending`, `Syncing`, `Ready`, or `Error` |
-| `message` | Human-readable status message |
-| `lastSync` | Timestamp of last successful sync |
-| `lastCommit` | Short SHA of the last synced commit |
-| `url` | Full URL of the deployed site |
-| `syncToken` | Auto-generated token for API authentication |
-
-### Check Status
-
-```bash
-# List all sites
-kubectl get staticsites -A
-
-# Detailed status
-kubectl describe staticsite my-website -n pages
-
-# Short form
-kubectl get ss -n pages
-```
-
-## Webhooks
-
-For instant deployments on push, configure webhooks in your Git provider.
-
-### Webhook Endpoints
-
-| Provider | URL |
-|----------|-----|
-| Forgejo/Gitea | `https://webhook.pages.kup6s.com/webhook/forgejo` |
-| GitHub | `https://webhook.pages.kup6s.com/webhook/github` |
-| Manual sync | `POST /sync/{namespace}/{name}` (requires `X-API-Key` header) |
-| Delete site | `DELETE /site/{namespace}/{name}` (requires `X-API-Key` header) |
-
-### Setup Webhook Ingress
-
-Enable webhooks in your Helm values. **A webhook secret is required** for HMAC signature validation:
-
-```yaml
-webhook:
-  enabled: true
-  domain: "webhook.pages.example.com"
-  clusterIssuer: "letsencrypt-prod"
-  # Required: set a secret for HMAC validation
-  secret: "your-webhook-secret-here"
-  # Or reference an existing secret:
-  # secretRef:
-  #   name: "my-webhook-secret"
-  #   key: "webhook-secret"
-```
-
-This creates the IngressRoute and Certificate automatically. The same secret must be configured in your Git provider's webhook settings.
-
-### Configure in Forgejo/Gitea
-
-1. Go to Repository → Settings → Webhooks → Add Webhook
-2. URL: `https://webhook.pages.kup6s.com/webhook/forgejo`
-3. Content Type: `application/json`
-4. Secret: Use the same secret configured in `webhook.secret`
-5. Events: Push events
-
-### Configure in GitHub
-
-1. Go to Repository → Settings → Webhooks → Add webhook
-2. Payload URL: `https://webhook.pages.kup6s.com/webhook/github`
-3. Content type: `application/json`
-4. Secret: Use the same secret configured in `webhook.secret`
-5. Events: Just the push event
-
-## Operator Configuration
-
-The operator accepts these flags:
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--pages-domain` | `pages.kup6s.com` | Base domain for auto-generated subdomains |
-| `--cluster-issuer` | `letsencrypt-prod` | cert-manager ClusterIssuer name |
-| `--nginx-namespace` | `kup6s-pages` | Namespace where nginx service runs |
-| `--nginx-service-name` | `kup6s-pages-nginx` | Name of the nginx service |
-| `--metrics-bind-address` | `:8080` | Metrics endpoint |
-| `--health-probe-bind-address` | `:8081` | Health probe endpoint |
-
-The syncer accepts these flags:
-
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--sites-root` | `/sites` | Directory where sites are stored |
-| `--sync-interval` | `5m` | Default interval for polling repos |
-| `--webhook-addr` | `:8080` | Webhook HTTP server address |
-| `--allowed-hosts` | **Required** | Comma-separated allowlist of Git hosts (SSRF protection) |
-
-Common allowed hosts examples: `github.com`, `gitlab.com`, `bitbucket.org`, `codeberg.org`. Wildcards are supported for self-hosted instances: `*.gitlab.example.com`.
-
-## Troubleshooting
-
-### Site stuck in "Pending"
-
-Check the Syncer logs:
-```bash
-kubectl logs -n kup6s-pages -l app=pages-syncer
-```
-
-### Certificate not ready
-
-Check cert-manager:
-```bash
-kubectl get certificate -n pages
-kubectl describe certificate my-website-tls -n pages
-```
-
-### 404 errors
-
-1. Verify the site directory exists:
-```bash
-kubectl exec -n kup6s-pages deploy/pages-syncer -- ls -la /sites/
-```
-
-2. Check if the repo was cloned successfully:
-```bash
-kubectl get staticsite my-website -n pages -o yaml
-```
-
-### Private repo authentication fails
-
-1. Verify the RBAC is set up (syncer needs access to secrets in your namespace):
-```bash
-kubectl get rolebinding pages-syncer-secrets -n pages
-```
-If missing, see "Private Repository with Deploy Token" section for RBAC setup.
-
-2. Verify the Secret exists and has the correct key:
-```bash
-kubectl get secret my-repo-token -n pages -o yaml
-```
-
-3. Test the token manually (replace with your values):
-```bash
-git clone https://git:YOUR_TOKEN@forgejo.example.com/org/repo.git
-```
-
-### Force re-sync
-
-Trigger a manual sync using the site's sync token:
-```bash
-# Get the sync token from the StaticSite status
-TOKEN=$(kubectl get staticsite my-website -n pages -o jsonpath='{.status.syncToken}')
-
-# Trigger sync with authentication
-curl -H "X-API-Key: $TOKEN" -X POST https://webhook.pages.kup6s.com/sync/pages/my-website
-```
-
-## Security
-
-The operator uses a ClusterRole because it watches StaticSite resources across all namespaces.
-All managed resources (IngressRoutes, Middlewares, Certificates, Services) are created in the
-StaticSite's namespace, following the principle of least privilege.
-
-Key security features:
-- Operator cannot create or delete StaticSite resources (users do that)
-- Syncer has no secrets access by default (opt-in via namespace Roles)
-- SSRF protection via mandatory `--allowed-hosts` flag
-- All pods run as non-root with read-only root filesystem
-
-See [docs/SECURITY.md](docs/SECURITY.md) for detailed RBAC documentation.
+- [Installation](https://pages-docs.sites.kup6s.com/installation/)
+- [Usage Guide](https://pages-docs.sites.kup6s.com/usage/)
+- [Reference](https://pages-docs.sites.kup6s.com/reference/)
+- [Troubleshooting](https://pages-docs.sites.kup6s.com/troubleshooting/)
 
 ## Development
 
-### Project Structure
-
-```
-pages/
-├── cmd/
-│   ├── operator/         # Operator entrypoint
-│   └── syncer/           # Syncer entrypoint
-├── pkg/
-│   ├── apis/v1alpha1/    # CRD types
-│   ├── controller/       # Reconciliation logic
-│   └── syncer/           # Git sync and webhook server
-└── charts/kup6s-pages/   # Helm chart
-    ├── Chart.yaml
-    ├── values.yaml
-    ├── templates/
-    ├── crds/
-    └── tests/            # Helm unit tests
-```
-
-### Build
-
 ```bash
-# Build operator
-go build -o bin/operator ./cmd/operator
-
-# Build syncer
-go build -o bin/syncer ./cmd/syncer
+make build      # Build binaries
+make test       # Run tests
+make lint       # Run linter
+make docs-serve # Preview documentation
 ```
 
-### Run Tests
-
-```bash
-# Go tests
-go test ./...
-
-# Helm chart tests
-helm lint charts/kup6s-pages
-helm unittest charts/kup6s-pages
-```
-
-### Run Locally (for development)
-
-```bash
-# Operator (requires kubeconfig)
-go run ./cmd/operator --pages-domain=pages.local --cluster-issuer=selfsigned
-
-# Syncer (--allowed-hosts is required)
-go run ./cmd/syncer --sites-root=/tmp/sites --sync-interval=1m --allowed-hosts=github.com,gitlab.com
-```
+See [Development Guide](https://pages-docs.sites.kup6s.com/development/) for details.
 
 ## License
 
