@@ -47,7 +47,7 @@ func (f *fakeNamespaceableResource) List(ctx context.Context, opts metav1.ListOp
 	return &unstructured.UnstructuredList{Items: items}, nil
 }
 
-// Nicht benötigte Methoden - minimal implementiert
+// Unused methods - minimally implemented
 func (f *fakeNamespaceableResource) Create(ctx context.Context, obj *unstructured.Unstructured, opts metav1.CreateOptions, subresources ...string) (*unstructured.Unstructured, error) {
 	return obj, nil
 }

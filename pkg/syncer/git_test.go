@@ -267,7 +267,7 @@ func TestStaticSiteDataFromUnstructured(t *testing.T) {
 }
 
 func TestSetupSubpath(t *testing.T) {
-	// Temp-Verzeichnis erstellen
+	// Create temp directory
 	tmpDir, err := os.MkdirTemp("", "syncer-test-*")
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
@@ -328,7 +328,7 @@ func TestSetupSubpath(t *testing.T) {
 				repoDir := filepath.Join(tmpDir, ".repos", "replace")
 				_ = os.MkdirAll(filepath.Join(repoDir, "old"), 0755)
 				_ = os.MkdirAll(filepath.Join(repoDir, "new"), 0755)
-				// Alten Symlink erstellen
+				// Create old symlink
 				linkPath := filepath.Join(tmpDir, "replace")
 				_ = os.Symlink(filepath.Join(repoDir, "old"), linkPath)
 				return repoDir
@@ -662,20 +662,20 @@ func TestCleanup(t *testing.T) {
 	}
 	defer func() { _ = os.RemoveAll(tmpDir) }()
 
-	// Setup: Einige Site-Verzeichnisse erstellen
+	// Setup: Create some site directories
 	_ = os.MkdirAll(filepath.Join(tmpDir, "active-site"), 0755)
 	_ = os.MkdirAll(filepath.Join(tmpDir, "orphan-site"), 0755)
 	_ = os.MkdirAll(filepath.Join(tmpDir, ".repos", "active-site"), 0755)
 	_ = os.MkdirAll(filepath.Join(tmpDir, ".repos", "orphan-repo"), 0755)
 
-	// Symlink für orphan
+	// Symlink for orphan
 	_ = os.MkdirAll(filepath.Join(tmpDir, ".repos", "orphan-link", "dist"), 0755)
 	_ = os.Symlink(
 		filepath.Join(tmpDir, ".repos", "orphan-link", "dist"),
 		filepath.Join(tmpDir, "orphan-link"),
 	)
 
-	// Mock DynamicClient der nur "active-site" zurückgibt
+	// Mock DynamicClient that only returns "active-site"
 	s := &Syncer{
 		SitesRoot:     tmpDir,
 		DynamicClient: &fakeDynamicClient{activeSites: []string{"active-site"}},
@@ -687,27 +687,27 @@ func TestCleanup(t *testing.T) {
 		t.Fatalf("Cleanup() error = %v", err)
 	}
 
-	// active-site sollte noch existieren
+	// active-site should still exist
 	if _, err := os.Stat(filepath.Join(tmpDir, "active-site")); os.IsNotExist(err) {
 		t.Error("active-site was deleted but should exist")
 	}
 
-	// orphan-site sollte gelöscht sein
+	// orphan-site should be deleted
 	if _, err := os.Stat(filepath.Join(tmpDir, "orphan-site")); !os.IsNotExist(err) {
 		t.Error("orphan-site still exists but should be deleted")
 	}
 
-	// orphan-link (symlink) sollte gelöscht sein
+	// orphan-link (symlink) should be deleted
 	if _, err := os.Lstat(filepath.Join(tmpDir, "orphan-link")); !os.IsNotExist(err) {
 		t.Error("orphan-link still exists but should be deleted")
 	}
 
-	// .repos/orphan-repo sollte gelöscht sein
+	// .repos/orphan-repo should be deleted
 	if _, err := os.Stat(filepath.Join(tmpDir, ".repos", "orphan-repo")); !os.IsNotExist(err) {
 		t.Error(".repos/orphan-repo still exists but should be deleted")
 	}
 
-	// .repos/active-site sollte noch existieren
+	// .repos/active-site should still exist
 	if _, err := os.Stat(filepath.Join(tmpDir, ".repos", "active-site")); os.IsNotExist(err) {
 		t.Error(".repos/active-site was deleted but should exist")
 	}
