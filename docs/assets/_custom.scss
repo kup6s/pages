@@ -1,50 +1,40 @@
-// Dark mode fixes for code blocks
+// Light theme syntax highlighting (default)
+@import "chroma-light";
+
+// Dark theme syntax highlighting - both media query and data attribute
+@media (prefers-color-scheme: dark) {
+  @import "chroma-dark";
+
+  .highlight,
+  .highlight pre,
+  .chroma,
+  pre,
+  pre code {
+    background-color: #272822 !important;
+    color: #f8f8f2 !important;
+  }
+
+  :not(pre) > code {
+    background: #3e3d32 !important;
+    color: #f8f8f2 !important;
+  }
+}
+
+// Also support explicit dark theme toggle
 [data-theme="dark"] {
-  // Inline code
-  code {
-    background: #2d2d2d;
-    color: #e6e6e6;
+  @import "chroma-dark";
+
+  .highlight,
+  .highlight pre,
+  .chroma,
+  pre,
+  pre code {
+    background-color: #272822 !important;
+    color: #f8f8f2 !important;
   }
 
-  // Code blocks
-  .highlight {
-    background: #1e1e1e !important;
-
-    pre {
-      background: #1e1e1e !important;
-      color: #d4d4d4;
-    }
-
-    code {
-      background: transparent;
-      color: inherit;
-    }
-  }
-
-  // Markdown code blocks without syntax highlighting
-  .markdown pre {
-    background: #1e1e1e;
-    color: #d4d4d4;
-  }
-
-  // Chroma syntax highlighting - use dark theme colors
-  .chroma {
-    background: #1e1e1e;
-    color: #d4d4d4;
-
-    // Keywords
-    .k, .kc, .kd, .kn, .kp, .kr, .kt { color: #569cd6; }
-    // Strings
-    .s, .sa, .sb, .sc, .dl, .sd, .s2, .se, .sh, .si, .sx, .sr, .s1, .ss { color: #ce9178; }
-    // Numbers
-    .m, .mb, .mf, .mh, .mi, .il, .mo { color: #b5cea8; }
-    // Comments
-    .c, .ch, .cm, .c1, .cs, .cp, .cpf { color: #6a9955; font-style: italic; }
-    // Functions
-    .n, .na, .nb, .nc, .no, .nd, .ni, .ne, .nf, .nl, .nn, .nx, .py, .nt, .nv { color: #dcdcaa; }
-    // Operators
-    .o, .ow { color: #d4d4d4; }
-    // Punctuation
-    .p { color: #d4d4d4; }
+  :not(pre) > code {
+    background: #3e3d32 !important;
+    color: #f8f8f2 !important;
   }
 }
