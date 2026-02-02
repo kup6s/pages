@@ -14,19 +14,22 @@ import (
 // fakeDynamicClient ist ein minimaler Mock für Tests
 type fakeDynamicClient struct {
 	activeSites []string
+	// lastPatch captures the last patch data for testing
+	lastPatch []byte
 }
 
 func (f *fakeDynamicClient) Resource(resource schema.GroupVersionResource) dynamic.NamespaceableResourceInterface {
-	return &fakeNamespaceableResource{activeSites: f.activeSites}
+	return &fakeNamespaceableResource{activeSites: f.activeSites, client: f}
 }
 
 type fakeNamespaceableResource struct {
 	activeSites []string
 	namespace   string
+	client      *fakeDynamicClient
 }
 
 func (f *fakeNamespaceableResource) Namespace(ns string) dynamic.ResourceInterface {
-	return &fakeNamespaceableResource{activeSites: f.activeSites, namespace: ns}
+	return &fakeNamespaceableResource{activeSites: f.activeSites, namespace: ns, client: f.client}
 }
 
 func (f *fakeNamespaceableResource) List(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error) {
@@ -84,6 +87,9 @@ func (f *fakeNamespaceableResource) Watch(ctx context.Context, opts metav1.ListO
 }
 
 func (f *fakeNamespaceableResource) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	if f.client != nil {
+		f.client.lastPatch = data
+	}
 	return &unstructured.Unstructured{}, nil
 }
 
