@@ -1,6 +1,11 @@
 suite: syncer deployment tests
 templates:
   - templates/deployment-syncer.yaml
+set:
+  # allowedHosts is required for all tests
+  syncer.allowedHosts:
+    - github.com
+    - gitlab.com
 tests:
   - it: should render with default values
     asserts:
@@ -56,3 +61,19 @@ tests:
       - equal:
           path: metadata.labels["app.kubernetes.io/component"]
           value: syncer
+
+  - it: should set allowed-hosts argument
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --allowed-hosts=github.com,gitlab.com
+
+  - it: should set custom allowed-hosts
+    set:
+      syncer.allowedHosts:
+        - forgejo.example.com
+        - "*.gitlab.internal"
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --allowed-hosts=forgejo.example.com,*.gitlab.internal

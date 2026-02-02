@@ -1,4 +1,7 @@
 {{- include "kup6s-pages.validateWebhook" . -}}
+{{- if not .Values.syncer.allowedHosts }}
+{{- fail "SECURITY: syncer.allowedHosts is required and cannot be empty. This setting limits which Git hosts can be cloned to prevent SSRF attacks. Example: [\"github.com\", \"gitlab.com\"]" }}
+{{- end }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -40,6 +43,7 @@ spec:
             - --sites-root={{ .Values.syncer.sitesRoot }}
             - --sync-interval={{ .Values.syncer.syncInterval }}
             - --webhook-addr={{ .Values.syncer.webhookAddr }}
+            - --allowed-hosts={{ .Values.syncer.allowedHosts | join "," }}
             {{- if include "kup6s-pages.webhook.hasSecret" . }}
             - --webhook-secret=$(WEBHOOK_SECRET)
             {{- end }}

@@ -59,7 +59,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Parse allowed hosts
+	// Parse allowed hosts (mandatory for SSRF protection)
 	var hosts []string
 	if allowedHosts != "" {
 		for _, h := range strings.Split(allowedHosts, ",") {
@@ -69,6 +69,15 @@ func main() {
 			}
 		}
 	}
+
+	if len(hosts) == 0 {
+		log.Error(nil, "SECURITY: --allowed-hosts is required and cannot be empty",
+			"hint", "This flag limits which Git hosts can be cloned to prevent SSRF attacks",
+			"example", "--allowed-hosts=github.com,gitlab.com")
+		os.Exit(1)
+	}
+
+	log.Info("Allowed Git hosts configured", "hosts", hosts)
 
 	// Create Syncer
 	s := &syncer.Syncer{

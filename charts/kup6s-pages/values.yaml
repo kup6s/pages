@@ -139,6 +139,12 @@ syncer:
   # -- Sites root directory (inside the PVC)
   sitesRoot: "/sites"
 
+  # -- (REQUIRED) Allowed Git hosts for SSRF protection.
+  # The syncer will only clone repositories from these hosts.
+  # Supports wildcards: "*.gitlab.example.com"
+  # Example: ["github.com", "gitlab.com", "bitbucket.org"]
+  allowedHosts: []
+
   # -- Additional CLI arguments
   extraArgs: []
 
