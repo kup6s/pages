@@ -39,7 +39,7 @@ func (w *WebhookServer) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	case r.Method == "GET" && path == "health":
 		// Health check
 		rw.WriteHeader(http.StatusOK)
-		fmt.Fprint(rw, "ok")
+		_, _ = fmt.Fprint(rw, "ok")
 
 	case r.Method == "POST" && len(parts) == 3 && parts[0] == "sync":
 		// POST /sync/{namespace}/{name} - requires X-API-Key
@@ -86,7 +86,7 @@ func (w *WebhookServer) handleSync(ctx context.Context, rw http.ResponseWriter, 
 	}
 
 	rw.WriteHeader(http.StatusOK)
-	fmt.Fprintf(rw, "Synced %s/%s", namespace, name)
+	_, _ = fmt.Fprintf(rw, "Synced %s/%s", namespace, name)
 }
 
 // handleDelete deletes the files of a site
@@ -101,7 +101,7 @@ func (w *WebhookServer) handleDelete(ctx context.Context, rw http.ResponseWriter
 	}
 
 	rw.WriteHeader(http.StatusOK)
-	fmt.Fprintf(rw, "Deleted %s/%s", namespace, name)
+	_, _ = fmt.Fprintf(rw, "Deleted %s/%s", namespace, name)
 }
 
 // getSiteToken fetches the syncToken from a StaticSite's status
@@ -206,7 +206,7 @@ func (w *WebhookServer) handleForgejoWebhook(ctx context.Context, rw http.Respon
 	}
 
 	rw.WriteHeader(http.StatusOK)
-	fmt.Fprint(rw, "ok")
+	_, _ = fmt.Fprint(rw, "ok")
 }
 
 // GitHubWebhookPayload is the webhook payload from GitHub
@@ -226,7 +226,7 @@ func (w *WebhookServer) handleGitHubWebhook(ctx context.Context, rw http.Respons
 	eventType := r.Header.Get("X-GitHub-Event")
 	if eventType != "push" {
 		rw.WriteHeader(http.StatusOK)
-		fmt.Fprintf(rw, "ignored event: %s", eventType)
+		_, _ = fmt.Fprintf(rw, "ignored event: %s", eventType)
 		return
 	}
 
@@ -267,7 +267,7 @@ func (w *WebhookServer) handleGitHubWebhook(ctx context.Context, rw http.Respons
 	}
 
 	rw.WriteHeader(http.StatusOK)
-	fmt.Fprint(rw, "ok")
+	_, _ = fmt.Fprint(rw, "ok")
 }
 
 // syncByRepo finds all sites with a repo URL and syncs them

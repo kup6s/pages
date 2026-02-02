@@ -218,7 +218,7 @@ func TestSetupSubpath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	s := &Syncer{SitesRoot: tmpDir}
 
@@ -314,7 +314,7 @@ func TestDeleteSite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	s := &Syncer{SitesRoot: tmpDir}
 	ctx := context.Background()
@@ -378,7 +378,7 @@ func TestCleanup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Setup: Einige Site-Verzeichnisse erstellen
 	_ = os.MkdirAll(filepath.Join(tmpDir, "active-site"), 0755)

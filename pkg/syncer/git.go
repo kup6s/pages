@@ -271,7 +271,7 @@ func (s *Syncer) setupSubpath(siteName, repoDir, subpath string) error {
 	// Remove old symlink if present
 	if info, err := os.Lstat(linkPath); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
-			os.Remove(linkPath)
+			_ = os.Remove(linkPath)
 		}
 	}
 
@@ -434,9 +434,9 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 			// Remove symlink or directory
 			if info, err := os.Lstat(sitePath); err == nil {
 				if info.Mode()&os.ModeSymlink != 0 {
-					os.Remove(sitePath)
+					_ = os.Remove(sitePath)
 				} else {
-					os.RemoveAll(sitePath)
+					_ = os.RemoveAll(sitePath)
 				}
 			}
 		}
@@ -450,7 +450,7 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 			if !activeSites[name] {
 				repoPath := filepath.Join(reposDir, name)
 				logger.Info("Removing orphaned repo directory", "name", name)
-				os.RemoveAll(repoPath)
+				_ = os.RemoveAll(repoPath)
 			}
 		}
 	}
@@ -467,15 +467,15 @@ func (s *Syncer) DeleteSite(ctx context.Context, name string) error {
 	sitePath := filepath.Join(s.SitesRoot, name)
 	if info, err := os.Lstat(sitePath); err == nil {
 		if info.Mode()&os.ModeSymlink != 0 {
-			os.Remove(sitePath)
+			_ = os.Remove(sitePath)
 		} else {
-			os.RemoveAll(sitePath)
+			_ = os.RemoveAll(sitePath)
 		}
 	}
 
 	// Remove repo directory in .repos
 	repoPath := filepath.Join(s.SitesRoot, ".repos", name)
-	os.RemoveAll(repoPath)
+	_ = os.RemoveAll(repoPath)
 
 	return nil
 }
