@@ -10,7 +10,7 @@ metadata:
 # All generated resources (IngressRoutes, Middlewares, Certificates) are created
 # in the system namespace only - see Role for those permissions.
 # This ClusterRole is now read-only except for status/finalizer updates.
-# See docs/SECURITY.md for detailed RBAC documentation.
+# See https://pages-docs.sites.kup6s.com/security/ for detailed RBAC documentation.
 rules:
   # StaticSite CRD - watch and manage existing resources
   # The operator does NOT create or delete StaticSites (users do that).
