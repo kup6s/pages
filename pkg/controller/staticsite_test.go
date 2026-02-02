@@ -314,9 +314,57 @@ func TestFinalizerName(t *testing.T) {
 	}
 }
 
-func TestNginxProxyServiceName(t *testing.T) {
-	if nginxProxyServiceName != "pages-nginx-proxy" {
-		t.Errorf("nginxProxyServiceName = %q, want %q", nginxProxyServiceName, "pages-nginx-proxy")
+func TestResourceName(t *testing.T) {
+	tests := []struct {
+		namespace string
+		name      string
+		want      string
+	}{
+		{"default", "my-site", "default--my-site"},
+		{"pages", "customer-website", "pages--customer-website"},
+		{"kup6s-pages", "test", "kup6s-pages--test"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.namespace+"/"+tt.name, func(t *testing.T) {
+			site := &pagesv1.StaticSite{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      tt.name,
+					Namespace: tt.namespace,
+				},
+			}
+			got := resourceName(site)
+			if got != tt.want {
+				t.Errorf("resourceName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestResourceNameWithSuffix(t *testing.T) {
+	tests := []struct {
+		namespace string
+		name      string
+		suffix    string
+		want      string
+	}{
+		{"default", "my-site", "prefix", "default--my-site-prefix"},
+		{"pages", "customer", "strip", "pages--customer-strip"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.namespace+"/"+tt.name+"/"+tt.suffix, func(t *testing.T) {
+			site := &pagesv1.StaticSite{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      tt.name,
+					Namespace: tt.namespace,
+				},
+			}
+			got := resourceNameWithSuffix(site, tt.suffix)
+			if got != tt.want {
+				t.Errorf("resourceNameWithSuffix() = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 
