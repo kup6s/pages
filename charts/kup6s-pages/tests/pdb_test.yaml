@@ -1,0 +1,48 @@
+suite: PodDisruptionBudget tests
+templates:
+  - templates/pdb-nginx.yaml
+tests:
+  - it: should create PDB with default values
+    asserts:
+      - isKind:
+          of: PodDisruptionBudget
+      - equal:
+          path: apiVersion
+          value: policy/v1
+      - matchRegex:
+          path: metadata.name
+          pattern: -nginx$
+      - equal:
+          path: spec.minAvailable
+          value: 1
+
+  - it: should use custom minAvailable value
+    set:
+      nginx.pdb.minAvailable: 2
+    asserts:
+      - equal:
+          path: spec.minAvailable
+          value: 2
+
+  - it: should not create PDB when disabled
+    set:
+      nginx.pdb.enabled: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should have correct selector labels
+    asserts:
+      - exists:
+          path: spec.selector.matchLabels["app.kubernetes.io/component"]
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/component"]
+          value: nginx
+
+  - it: should be in correct namespace
+    set:
+      namespace: custom-namespace
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: custom-namespace
