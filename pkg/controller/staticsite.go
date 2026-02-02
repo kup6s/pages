@@ -14,7 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
@@ -35,7 +35,7 @@ const (
 type StaticSiteReconciler struct {
 	client.Client
 	DynamicClient dynamic.Interface
-	Recorder      record.EventRecorder
+	Recorder      events.EventRecorder
 
 	// Config
 	PagesDomain      string // e.g. "pages.kup6s.com"
@@ -203,7 +203,7 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 
-	r.Recorder.Event(site, "Normal", "Configured", fmt.Sprintf("Site configured at %s", site.Status.URL))
+	r.Recorder.Eventf(site, nil, "Normal", "Configured", "ConfigureIngress", "Site configured at %s", site.Status.URL)
 
 	// Requeue after 5 minutes for status check
 	return ctrl.Result{RequeueAfter: 5 * time.Minute}, nil
@@ -617,7 +617,7 @@ func (r *StaticSiteReconciler) setError(ctx context.Context, site *pagesv1.Stati
 	site.Status.Phase = pagesv1.PhaseError
 	site.Status.Message = err.Error()
 	
-	r.Recorder.Event(site, "Warning", reason, err.Error())
+	r.Recorder.Eventf(site, nil, "Warning", reason, "ReconcileError", "%s", err.Error())
 	
 	if updateErr := r.Status().Update(ctx, site); updateErr != nil {
 		return ctrl.Result{}, updateErr
