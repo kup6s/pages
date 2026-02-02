@@ -33,8 +33,9 @@ import (
 var randReader io.Reader = rand.Reader
 
 const (
-	finalizerName         = "pages.kup6s.com/finalizer"
-	maxK8sResourceNameLen = 63
+	finalizerName           = "pages.kup6s.com/finalizer"
+	maxK8sResourceNameLen   = 63
+	immediateRequeueDelay   = 100 * time.Millisecond
 )
 
 // truncateK8sName truncates a name to the Kubernetes resource name length limit
@@ -163,7 +164,7 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		if err := r.Update(ctx, site); err != nil {
 			return ctrl.Result{}, err
 		}
-		return ctrl.Result{RequeueAfter: time.Millisecond}, nil
+		return ctrl.Result{RequeueAfter: immediateRequeueDelay}, nil
 	}
 
 	// 4. Generate sync token if not present
@@ -177,7 +178,7 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			return ctrl.Result{}, err
 		}
 		logger.Info("Generated sync token", "name", site.Name)
-		return ctrl.Result{RequeueAfter: time.Millisecond}, nil
+		return ctrl.Result{RequeueAfter: immediateRequeueDelay}, nil
 	}
 
 	// 5. Validate pathPrefix
