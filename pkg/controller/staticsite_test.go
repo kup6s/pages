@@ -12,7 +12,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
-	"k8s.io/client-go/tools/record"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 )
@@ -42,7 +42,7 @@ func TestReconcile_NewSite(t *testing.T) {
 	r := &StaticSiteReconciler{
 		Client:           fakeClient,
 		DynamicClient:    &fakeDynamicClient{},
-		Recorder:         record.NewFakeRecorder(10),
+		Recorder:         events.NewFakeRecorder(10),
 		PagesDomain:      "pages.kup6s.com",
 		ClusterIssuer:    "letsencrypt-prod",
 		NginxNamespace:   "kup6s-pages",
@@ -121,7 +121,7 @@ func TestReconcile_CustomDomain(t *testing.T) {
 	r := &StaticSiteReconciler{
 		Client:           fakeClient,
 		DynamicClient:    &fakeDynamicClient{},
-		Recorder:         record.NewFakeRecorder(10),
+		Recorder:         events.NewFakeRecorder(10),
 		PagesDomain:      "pages.kup6s.com",
 		ClusterIssuer:    "letsencrypt-prod",
 		NginxNamespace:   "kup6s-pages",
@@ -170,7 +170,7 @@ func TestReconcile_NotFound(t *testing.T) {
 	r := &StaticSiteReconciler{
 		Client:           fakeClient,
 		DynamicClient:    &fakeDynamicClient{},
-		Recorder:         record.NewFakeRecorder(10),
+		Recorder:         events.NewFakeRecorder(10),
 		PagesDomain:      "pages.kup6s.com",
 		NginxNamespace:   "kup6s-pages",
 		NginxServiceName: "kup6s-pages-nginx",
@@ -218,7 +218,7 @@ func TestReconcile_Deletion(t *testing.T) {
 	r := &StaticSiteReconciler{
 		Client:           fakeClient,
 		DynamicClient:    &fakeDynamicClient{},
-		Recorder:         record.NewFakeRecorder(10),
+		Recorder:         events.NewFakeRecorder(10),
 		PagesDomain:      "pages.kup6s.com",
 		NginxNamespace:   "kup6s-pages",
 		NginxServiceName: "kup6s-pages-nginx",
@@ -494,7 +494,7 @@ func TestReconcile_PathPrefix(t *testing.T) {
 	r := &StaticSiteReconciler{
 		Client:           fakeClient,
 		DynamicClient:    &fakeDynamicClient{},
-		Recorder:         record.NewFakeRecorder(10),
+		Recorder:         events.NewFakeRecorder(10),
 		PagesDomain:      "pages.kup6s.com",
 		ClusterIssuer:    "letsencrypt-prod",
 		NginxNamespace:   "kup6s-pages",
@@ -564,7 +564,7 @@ func TestReconcile_PathPrefixValidationFails(t *testing.T) {
 	r := &StaticSiteReconciler{
 		Client:           fakeClient,
 		DynamicClient:    &fakeDynamicClient{},
-		Recorder:         record.NewFakeRecorder(10),
+		Recorder:         events.NewFakeRecorder(10),
 		PagesDomain:      "pages.kup6s.com",
 		ClusterIssuer:    "letsencrypt-prod",
 		NginxNamespace:   "kup6s-pages",
