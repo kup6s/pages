@@ -51,6 +51,8 @@ type StaticSiteSpec struct {
 
 	// Domain is the custom domain for this site
 	// If empty: <name>.pages.kup6s.com
+	// +kubebuilder:validation:MaxLength=253
+	// +kubebuilder:validation:Pattern=`^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$`
 	// +optional
 	Domain string `json:"domain,omitempty"`
 

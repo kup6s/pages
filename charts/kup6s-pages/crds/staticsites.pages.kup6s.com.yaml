@@ -56,6 +56,8 @@ spec:
                 domain:
                   type: string
                   description: Custom Domain
+                  maxLength: 253
+                  pattern: '^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$'
                 secretRef:
                   type: object
                   description: Secret with Git credentials
