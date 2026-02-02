@@ -29,8 +29,18 @@ import (
 )
 
 const (
-	finalizerName = "pages.kup6s.com/finalizer"
+	finalizerName         = "pages.kup6s.com/finalizer"
+	maxK8sResourceNameLen = 63
 )
+
+// truncateK8sName truncates a name to the Kubernetes resource name length limit
+// and removes any trailing hyphens that could result from the truncation.
+func truncateK8sName(name string) string {
+	if len(name) > maxK8sResourceNameLen {
+		name = name[:maxK8sResourceNameLen]
+	}
+	return strings.TrimRight(name, "-")
+}
 
 // StaticSiteReconciler reconciles StaticSite resources
 type StaticSiteReconciler struct {
@@ -69,12 +79,7 @@ var (
 func sanitizeDomainForResourceName(domain string) string {
 	name := strings.ReplaceAll(domain, ".", "-")
 	name = strings.ToLower(name)
-	// Truncate to 63 characters (Kubernetes name limit)
-	if len(name) > 63 {
-		name = name[:63]
-	}
-	name = strings.TrimRight(name, "-")
-	return name
+	return truncateK8sName(name)
 }
 
 // resourceName generates a resource name prefixed with the StaticSite's namespace
@@ -82,24 +87,14 @@ func sanitizeDomainForResourceName(domain string) string {
 // Format: {namespace}--{name}, e.g., "customer-ns--my-site"
 func resourceName(site *pagesv1.StaticSite) string {
 	name := fmt.Sprintf("%s--%s", site.Namespace, site.Name)
-	// Truncate to 63 characters (Kubernetes name limit)
-	if len(name) > 63 {
-		name = name[:63]
-	}
-	name = strings.TrimRight(name, "-")
-	return name
+	return truncateK8sName(name)
 }
 
 // resourceNameWithSuffix generates a resource name with namespace prefix and suffix
 // Format: {namespace}--{name}-{suffix}, e.g., "customer-ns--my-site-prefix"
 func resourceNameWithSuffix(site *pagesv1.StaticSite, suffix string) string {
 	name := fmt.Sprintf("%s--%s-%s", site.Namespace, site.Name, suffix)
-	// Truncate to 63 characters (Kubernetes name limit)
-	if len(name) > 63 {
-		name = name[:63]
-	}
-	name = strings.TrimRight(name, "-")
-	return name
+	return truncateK8sName(name)
 }
 
 // generateSecureToken creates a cryptographically secure random token

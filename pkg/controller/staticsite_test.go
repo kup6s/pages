@@ -494,6 +494,57 @@ func TestValidatePathPrefix(t *testing.T) {
 	}
 }
 
+func TestTruncateK8sName(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "short name unchanged",
+			in:   "my-resource",
+			want: "my-resource",
+		},
+		{
+			name: "exactly 63 characters",
+			in:   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			want: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		},
+		{
+			name: "longer than 63 characters truncated",
+			in:   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", // 64 chars
+			want: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",  // 63 chars
+		},
+		{
+			name: "truncation removes trailing hyphen",
+			in:   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa---x", // 64 chars with hyphens before 63rd
+			want: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		},
+		{
+			name: "multiple trailing hyphens removed",
+			in:   "short-name---",
+			want: "short-name",
+		},
+		{
+			name: "empty string",
+			in:   "",
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := truncateK8sName(tt.in)
+			if got != tt.want {
+				t.Errorf("truncateK8sName(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+			if len(got) > maxK8sResourceNameLen {
+				t.Errorf("truncateK8sName(%q) length = %d, want <= %d", tt.in, len(got), maxK8sResourceNameLen)
+			}
+		})
+	}
+}
+
 func TestSanitizeDomainForResourceName(t *testing.T) {
 	tests := []struct {
 		domain string
