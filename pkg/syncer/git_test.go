@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -710,5 +712,503 @@ func TestCleanup(t *testing.T) {
 	// .repos/active-site should still exist
 	if _, err := os.Stat(filepath.Join(tmpDir, ".repos", "active-site")); os.IsNotExist(err) {
 		t.Error(".repos/active-site was deleted but should exist")
+	}
+}
+
+func TestGetSecretValue(t *testing.T) {
+	tests := []struct {
+		name      string
+		namespace string
+		secretNs  string
+		secretKey string
+		secrets   []*corev1.Secret
+		wantValue string
+		wantErr   bool
+		errMsg    string
+	}{
+		{
+			name:      "secret not found",
+			namespace: "default",
+			secretNs:  "missing-secret",
+			secretKey: "password",
+			secrets:   []*corev1.Secret{},
+			wantErr:   true,
+			errMsg:    "not found",
+		},
+		{
+			name:      "key not found in secret",
+			namespace: "default",
+			secretNs:  "git-creds",
+			secretKey: "missing-key",
+			secrets: []*corev1.Secret{
+				newTestSecret("default", "git-creds", map[string][]byte{
+					"password": []byte("secret-password"),
+				}),
+			},
+			wantErr: true,
+			errMsg:  "key missing-key not found",
+		},
+		{
+			name:      "success with explicit key",
+			namespace: "default",
+			secretNs:  "git-creds",
+			secretKey: "token",
+			secrets: []*corev1.Secret{
+				newTestSecret("default", "git-creds", map[string][]byte{
+					"token": []byte("my-token"),
+				}),
+			},
+			wantValue: "my-token",
+			wantErr:   false,
+		},
+		{
+			name:      "success with default password key",
+			namespace: "default",
+			secretNs:  "git-creds",
+			secretKey: "",
+			secrets: []*corev1.Secret{
+				newTestSecret("default", "git-creds", map[string][]byte{
+					"password": []byte("default-password"),
+				}),
+			},
+			wantValue: "default-password",
+			wantErr:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s := &Syncer{
+				ClientSet: newFakeClientset(tt.secrets...),
+			}
+
+			ctx := context.Background()
+			got, err := s.getSecretValue(ctx, tt.namespace, tt.secretNs, tt.secretKey)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("getSecretValue() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errMsg != "" {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("error message = %q, want to contain %q", err.Error(), tt.errMsg)
+				}
+				return
+			}
+			if got != tt.wantValue {
+				t.Errorf("getSecretValue() = %v, want %v", got, tt.wantValue)
+			}
+		})
+	}
+}
+
+func TestSyncSite_AuthFailure(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "syncer-auth-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	s := &Syncer{
+		SitesRoot:     tmpDir,
+		AllowedHosts:  []string{"github.com"},
+		DynamicClient: &fakeDynamicClient{activeSites: []string{"test-site"}},
+		ClientSet:     newFakeClientset(), // No secrets
+	}
+
+	site := &staticSiteData{
+		Name:      "test-site",
+		Namespace: "default",
+		Repo:      "https://github.com/example/repo.git",
+		Branch:    "main",
+		Path:      "/",
+		SecretRef: &secretRef{Name: "missing-secret", Key: "token"},
+	}
+
+	ctx := context.Background()
+	err = s.syncSite(ctx, site)
+
+	if err == nil {
+		t.Error("expected error for missing secret, got nil")
+	}
+	if !strings.Contains(err.Error(), "git credentials") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestSyncSite_CloneFailure(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "syncer-clone-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	s := &Syncer{
+		SitesRoot:     tmpDir,
+		AllowedHosts:  []string{"invalid.test"},
+		DynamicClient: &fakeDynamicClient{activeSites: []string{"test-site"}},
+		ClientSet:     newFakeClientset(),
+	}
+
+	site := &staticSiteData{
+		Name:      "test-site",
+		Namespace: "default",
+		Repo:      "https://invalid.test/nonexistent/repo.git",
+		Branch:    "main",
+		Path:      "/",
+	}
+
+	ctx := context.Background()
+	err = s.syncSite(ctx, site)
+
+	if err == nil {
+		t.Error("expected error for clone failure, got nil")
+	}
+	if !strings.Contains(err.Error(), "git clone failed") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestSyncSite_PullFailure(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "syncer-pull-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// Create a fake .git directory to simulate an existing repo
+	siteDir := filepath.Join(tmpDir, "test-site")
+	gitDir := filepath.Join(siteDir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatalf("failed to create fake git dir: %v", err)
+	}
+
+	s := &Syncer{
+		SitesRoot:     tmpDir,
+		AllowedHosts:  []string{"invalid.test"},
+		DynamicClient: &fakeDynamicClient{activeSites: []string{"test-site"}},
+		ClientSet:     newFakeClientset(),
+	}
+
+	site := &staticSiteData{
+		Name:      "test-site",
+		Namespace: "default",
+		Repo:      "https://invalid.test/nonexistent/repo.git",
+		Branch:    "main",
+		Path:      "/",
+	}
+
+	ctx := context.Background()
+	err = s.syncSite(ctx, site)
+
+	if err == nil {
+		t.Error("expected error for pull failure, got nil")
+	}
+	// The error could be "failed to open repo" since it's not a real git repo
+	if !strings.Contains(err.Error(), "failed to open repo") && !strings.Contains(err.Error(), "git pull failed") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestSyncSite_SubpathNotExist(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "syncer-subpath-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// Create a minimal git repo structure without the subpath
+	repoDir := filepath.Join(tmpDir, ".repos", "test-site")
+	gitDir := filepath.Join(repoDir, ".git")
+	if err := os.MkdirAll(gitDir, 0755); err != nil {
+		t.Fatalf("failed to create git dir: %v", err)
+	}
+	// Create minimal git files to make go-git recognize it
+	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0644); err != nil {
+		t.Fatalf("failed to create HEAD: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(gitDir, "objects"), 0755); err != nil {
+		t.Fatalf("failed to create objects dir: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Join(gitDir, "refs"), 0755); err != nil {
+		t.Fatalf("failed to create refs dir: %v", err)
+	}
+
+	s := &Syncer{
+		SitesRoot:     tmpDir,
+		AllowedHosts:  []string{"github.com"},
+		DynamicClient: &fakeDynamicClient{activeSites: []string{"test-site"}},
+		ClientSet:     newFakeClientset(),
+	}
+
+	site := &staticSiteData{
+		Name:      "test-site",
+		Namespace: "default",
+		Repo:      "https://github.com/example/repo.git",
+		Branch:    "main",
+		Path:      "/nonexistent/subpath",
+	}
+
+	ctx := context.Background()
+	err = s.syncSite(ctx, site)
+
+	if err == nil {
+		t.Error("expected error for nonexistent subpath, got nil")
+	}
+	// Either we get a subpath error or a pull error (since fake repo can't pull)
+	if !strings.Contains(err.Error(), "subpath") && !strings.Contains(err.Error(), "git pull failed") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestSyncSite_RepoURLValidationFailure(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "syncer-url-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	s := &Syncer{
+		SitesRoot:     tmpDir,
+		AllowedHosts:  []string{"github.com"},
+		DynamicClient: &fakeDynamicClient{activeSites: []string{"test-site"}},
+		ClientSet:     newFakeClientset(),
+	}
+
+	site := &staticSiteData{
+		Name:      "test-site",
+		Namespace: "default",
+		Repo:      "https://malicious.com/evil/repo.git",
+		Branch:    "main",
+		Path:      "/",
+	}
+
+	ctx := context.Background()
+	err = s.syncSite(ctx, site)
+
+	if err == nil {
+		t.Error("expected error for disallowed host, got nil")
+	}
+	if !strings.Contains(err.Error(), "repo URL validation failed") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestSyncSite_AuthWithUsername(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "syncer-auth-username-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// Create a secret with both username and password
+	secrets := []*corev1.Secret{
+		newTestSecret("default", "git-creds", map[string][]byte{
+			"username": []byte("myuser"),
+			"password": []byte("mypassword"),
+		}),
+	}
+
+	s := &Syncer{
+		SitesRoot:     tmpDir,
+		AllowedHosts:  []string{"invalid.test"},
+		DynamicClient: &fakeDynamicClient{activeSites: []string{"test-site"}},
+		ClientSet:     newFakeClientset(secrets...),
+	}
+
+	site := &staticSiteData{
+		Name:      "test-site",
+		Namespace: "default",
+		Repo:      "https://invalid.test/example/repo.git",
+		Branch:    "main",
+		Path:      "/",
+		SecretRef: &secretRef{Name: "git-creds", Key: "password"},
+	}
+
+	ctx := context.Background()
+	err = s.syncSite(ctx, site)
+
+	// We expect a clone failure since it's not a real repo,
+	// but the auth setup should have succeeded
+	if err == nil {
+		t.Error("expected clone error, got nil")
+	}
+	if !strings.Contains(err.Error(), "git clone failed") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestSyncSite_AuthWithDefaultUsername(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "syncer-auth-default-user-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// Create a secret with only password (no username)
+	secrets := []*corev1.Secret{
+		newTestSecret("default", "git-creds", map[string][]byte{
+			"password": []byte("mypassword"),
+		}),
+	}
+
+	s := &Syncer{
+		SitesRoot:     tmpDir,
+		AllowedHosts:  []string{"invalid.test"},
+		DynamicClient: &fakeDynamicClient{activeSites: []string{"test-site"}},
+		ClientSet:     newFakeClientset(secrets...),
+	}
+
+	site := &staticSiteData{
+		Name:      "test-site",
+		Namespace: "default",
+		Repo:      "https://invalid.test/example/repo.git",
+		Branch:    "main",
+		Path:      "/",
+		SecretRef: &secretRef{Name: "git-creds", Key: "password"},
+	}
+
+	ctx := context.Background()
+	err = s.syncSite(ctx, site)
+
+	// We expect a clone failure since it's not a real repo,
+	// but the auth setup with default "git" username should have succeeded
+	if err == nil {
+		t.Error("expected clone error, got nil")
+	}
+	if !strings.Contains(err.Error(), "git clone failed") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestSyncAll(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "syncer-syncall-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// Create a fake dynamic client that returns sites with invalid repos
+	// This tests that SyncAll continues even when individual sites fail
+	fakeClient := &fakeDynamicClientWithSites{
+		sites: []siteSpec{
+			{
+				name:      "site1",
+				namespace: "default",
+				repo:      "https://invalid.test/repo1.git",
+			},
+			{
+				name:      "site2",
+				namespace: "default",
+				repo:      "https://invalid.test/repo2.git",
+			},
+		},
+	}
+
+	s := &Syncer{
+		SitesRoot:     tmpDir,
+		AllowedHosts:  []string{"invalid.test"},
+		DynamicClient: fakeClient,
+		ClientSet:     newFakeClientset(),
+	}
+
+	ctx := context.Background()
+	err = s.SyncAll(ctx)
+
+	// SyncAll should not return error even if individual syncs fail
+	if err != nil {
+		t.Errorf("SyncAll() error = %v, want nil", err)
+	}
+}
+
+func TestSyncOne(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "syncer-syncone-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	fakeClient := &fakeDynamicClientWithSites{
+		sites: []siteSpec{
+			{
+				name:      "mysite",
+				namespace: "default",
+				repo:      "https://invalid.test/repo.git",
+			},
+		},
+	}
+
+	s := &Syncer{
+		SitesRoot:     tmpDir,
+		AllowedHosts:  []string{"invalid.test"},
+		DynamicClient: fakeClient,
+		ClientSet:     newFakeClientset(),
+	}
+
+	ctx := context.Background()
+	err = s.SyncOne(ctx, "default", "mysite")
+
+	// Should fail because we can't actually clone the invalid repo
+	if err == nil {
+		t.Error("expected clone error, got nil")
+	}
+}
+
+func TestSyncOne_NotFound(t *testing.T) {
+	fakeClient := &fakeDynamicClientWithSites{
+		sites:    []siteSpec{},
+		getError: true, // Simulate not found
+	}
+
+	s := &Syncer{
+		AllowedHosts:  []string{"github.com"},
+		DynamicClient: fakeClient,
+	}
+
+	ctx := context.Background()
+	err := s.SyncOne(ctx, "default", "nonexistent")
+
+	if err == nil {
+		t.Error("expected error for nonexistent site, got nil")
+	}
+	if !strings.Contains(err.Error(), "failed to get StaticSite") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestSyncAll_WithParseError(t *testing.T) {
+	// Test that SyncAll continues when a site fails to parse
+	fakeClient := &fakeDynamicClientWithInvalidSite{}
+
+	s := &Syncer{
+		AllowedHosts:  []string{"github.com"},
+		DynamicClient: fakeClient,
+	}
+
+	ctx := context.Background()
+	err := s.SyncAll(ctx)
+
+	// SyncAll should not return error even if parse fails
+	if err != nil {
+		t.Errorf("SyncAll() error = %v, want nil", err)
+	}
+}
+
+func TestSyncAll_ListError(t *testing.T) {
+	fakeClient := &fakeDynamicClientWithListError{}
+
+	s := &Syncer{
+		AllowedHosts:  []string{"github.com"},
+		DynamicClient: fakeClient,
+	}
+
+	ctx := context.Background()
+	err := s.SyncAll(ctx)
+
+	if err == nil {
+		t.Error("expected error for list failure, got nil")
+	}
+	if !strings.Contains(err.Error(), "failed to list StaticSites") {
+		t.Errorf("unexpected error message: %v", err)
 	}
 }
