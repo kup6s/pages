@@ -149,8 +149,9 @@ func (w *WebhookServer) validateWebhookSignature(body []byte, signature, prefix 
 	return hmac.Equal([]byte(sigHex), []byte(expectedSig))
 }
 
-// ForgejoWebhookPayload is the webhook payload from Forgejo/Gitea
-type ForgejoWebhookPayload struct {
+// WebhookPayload represents the common structure for Git webhook payloads.
+// Compatible with GitHub, Forgejo, Gitea, and GitLab push events.
+type WebhookPayload struct {
 	Ref        string `json:"ref"`
 	Repository struct {
 		FullName string `json:"full_name"`
@@ -182,7 +183,7 @@ func (w *WebhookServer) handleForgejoWebhook(ctx context.Context, rw http.Respon
 		}
 	}
 
-	var payload ForgejoWebhookPayload
+	var payload WebhookPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
 		http.Error(rw, "invalid payload", http.StatusBadRequest)
 		return
@@ -207,15 +208,6 @@ func (w *WebhookServer) handleForgejoWebhook(ctx context.Context, rw http.Respon
 
 	rw.WriteHeader(http.StatusOK)
 	_, _ = fmt.Fprint(rw, "ok")
-}
-
-// GitHubWebhookPayload is the webhook payload from GitHub
-type GitHubWebhookPayload struct {
-	Ref        string `json:"ref"`
-	Repository struct {
-		FullName string `json:"full_name"`
-		CloneURL string `json:"clone_url"`
-	} `json:"repository"`
 }
 
 // handleGitHubWebhook processes GitHub webhooks
@@ -247,7 +239,7 @@ func (w *WebhookServer) handleGitHubWebhook(ctx context.Context, rw http.Respons
 		}
 	}
 
-	var payload GitHubWebhookPayload
+	var payload WebhookPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
 		http.Error(rw, "invalid payload", http.StatusBadRequest)
 		return
