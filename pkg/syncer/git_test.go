@@ -309,6 +309,112 @@ func TestSetupSubpath(t *testing.T) {
 	}
 }
 
+func TestRemovePathOrSymlink(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "syncer-remove-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	tests := []struct {
+		name    string
+		setup   func() string // returns path to remove
+		wantErr bool
+	}{
+		{
+			name: "remove regular file",
+			setup: func() string {
+				path := filepath.Join(tmpDir, "file.txt")
+				_ = os.WriteFile(path, []byte("test"), 0644)
+				return path
+			},
+			wantErr: false,
+		},
+		{
+			name: "remove directory",
+			setup: func() string {
+				path := filepath.Join(tmpDir, "dir")
+				_ = os.MkdirAll(filepath.Join(path, "subdir"), 0755)
+				_ = os.WriteFile(filepath.Join(path, "subdir", "file.txt"), []byte("test"), 0644)
+				return path
+			},
+			wantErr: false,
+		},
+		{
+			name: "remove symlink",
+			setup: func() string {
+				target := filepath.Join(tmpDir, "target-dir")
+				_ = os.MkdirAll(target, 0755)
+				link := filepath.Join(tmpDir, "symlink")
+				_ = os.Symlink(target, link)
+				return link
+			},
+			wantErr: false,
+		},
+		{
+			name: "remove symlink to file",
+			setup: func() string {
+				target := filepath.Join(tmpDir, "target-file")
+				_ = os.WriteFile(target, []byte("test"), 0644)
+				link := filepath.Join(tmpDir, "file-symlink")
+				_ = os.Symlink(target, link)
+				return link
+			},
+			wantErr: false,
+		},
+		{
+			name: "non-existent path returns nil",
+			setup: func() string {
+				return filepath.Join(tmpDir, "does-not-exist")
+			},
+			wantErr: false,
+		},
+		{
+			name: "symlink removes only link not target",
+			setup: func() string {
+				target := filepath.Join(tmpDir, "preserve-target")
+				_ = os.MkdirAll(target, 0755)
+				_ = os.WriteFile(filepath.Join(target, "data.txt"), []byte("keep"), 0644)
+				link := filepath.Join(tmpDir, "link-to-preserve")
+				_ = os.Symlink(target, link)
+				return link
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := tt.setup()
+			err := removePathOrSymlink(path)
+
+			if (err != nil) != tt.wantErr {
+				t.Errorf("removePathOrSymlink() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+
+			// Path should not exist after removal (unless error expected)
+			if !tt.wantErr {
+				if _, err := os.Lstat(path); !os.IsNotExist(err) {
+					t.Errorf("path still exists after removal: %s", path)
+				}
+			}
+		})
+	}
+
+	// Verify symlink target preservation
+	t.Run("verify symlink target preserved", func(t *testing.T) {
+		targetPath := filepath.Join(tmpDir, "preserve-target")
+		if _, err := os.Stat(targetPath); os.IsNotExist(err) {
+			t.Error("symlink target was removed but should be preserved")
+		}
+		dataPath := filepath.Join(targetPath, "data.txt")
+		if _, err := os.Stat(dataPath); os.IsNotExist(err) {
+			t.Error("symlink target content was removed")
+		}
+	})
+}
+
 func TestDeleteSite(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "syncer-delete-test-*")
 	if err != nil {
