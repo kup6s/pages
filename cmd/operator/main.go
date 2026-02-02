@@ -42,7 +42,7 @@ func main() {
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address for metrics endpoint")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address for health probes")
-	flag.StringVar(&pagesDomain, "pages-domain", "pages.kup6s.com", "Base domain for auto-generated URLs")
+	flag.StringVar(&pagesDomain, "pages-domain", "", "Base domain for auto-generated URLs (required if sites don't specify custom domains)")
 	flag.StringVar(&clusterIssuer, "cluster-issuer", "letsencrypt-prod", "cert-manager ClusterIssuer name")
 	flag.StringVar(&nginxNamespace, "nginx-namespace", "kup6s-pages", "Namespace where nginx service runs")
 	flag.StringVar(&nginxServiceName, "nginx-service-name", "kup6s-pages-nginx", "Name of the nginx service in the system namespace")

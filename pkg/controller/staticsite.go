@@ -174,7 +174,10 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return r.setError(ctx, site, "ValidationFailed", err)
 	}
 
-	domain := r.determineDomain(site)
+	domain, err := r.determineDomain(site)
+	if err != nil {
+		return r.setError(ctx, site, "ValidationFailed", err)
+	}
 
 	if err := r.reconcileNetworking(ctx, site, domain); err != nil {
 		return r.setError(ctx, site, "NetworkingFailed", err)
@@ -218,11 +221,15 @@ func (r *StaticSiteReconciler) ensureFinalizerAndToken(ctx context.Context, site
 }
 
 // determineDomain returns the domain for the site (custom or auto-generated).
-func (r *StaticSiteReconciler) determineDomain(site *pagesv1.StaticSite) string {
+// Returns an error if no custom domain is set and PagesDomain is not configured.
+func (r *StaticSiteReconciler) determineDomain(site *pagesv1.StaticSite) (string, error) {
 	if site.Spec.Domain != "" {
-		return site.Spec.Domain
+		return site.Spec.Domain, nil
 	}
-	return fmt.Sprintf("%s.%s", site.Name, r.PagesDomain)
+	if r.PagesDomain == "" {
+		return "", fmt.Errorf("no custom domain specified and --pages-domain not configured")
+	}
+	return fmt.Sprintf("%s.%s", site.Name, r.PagesDomain), nil
 }
 
 // reconcileNetworking creates or updates the Traefik Middleware and IngressRoute.

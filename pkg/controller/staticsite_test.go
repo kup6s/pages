@@ -258,38 +258,56 @@ func TestReconcile_Deletion(t *testing.T) {
 }
 
 func TestDomainGeneration(t *testing.T) {
-	r := &StaticSiteReconciler{
-		PagesDomain: "pages.kup6s.com",
-	}
-
 	tests := []struct {
-		name       string
-		siteName   string
-		specDomain string
-		wantDomain string
+		name        string
+		pagesDomain string
+		siteName    string
+		specDomain  string
+		wantDomain  string
+		wantErr     bool
 	}{
 		{
-			name:       "custom domain",
-			siteName:   "mysite",
-			specDomain: "example.com",
-			wantDomain: "example.com",
+			name:        "custom domain",
+			pagesDomain: "pages.kup6s.com",
+			siteName:    "mysite",
+			specDomain:  "example.com",
+			wantDomain:  "example.com",
 		},
 		{
-			name:       "auto-generated domain",
-			siteName:   "mysite",
-			specDomain: "",
-			wantDomain: "mysite.pages.kup6s.com",
+			name:        "auto-generated domain",
+			pagesDomain: "pages.kup6s.com",
+			siteName:    "mysite",
+			specDomain:  "",
+			wantDomain:  "mysite.pages.kup6s.com",
 		},
 		{
-			name:       "site with dashes",
-			siteName:   "my-cool-site",
-			specDomain: "",
-			wantDomain: "my-cool-site.pages.kup6s.com",
+			name:        "site with dashes",
+			pagesDomain: "pages.kup6s.com",
+			siteName:    "my-cool-site",
+			specDomain:  "",
+			wantDomain:  "my-cool-site.pages.kup6s.com",
+		},
+		{
+			name:        "custom domain with empty PagesDomain",
+			pagesDomain: "",
+			siteName:    "mysite",
+			specDomain:  "example.com",
+			wantDomain:  "example.com",
+		},
+		{
+			name:        "no custom domain and no PagesDomain",
+			pagesDomain: "",
+			siteName:    "mysite",
+			specDomain:  "",
+			wantErr:     true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			r := &StaticSiteReconciler{
+				PagesDomain: tt.pagesDomain,
+			}
 			site := &pagesv1.StaticSite{
 				ObjectMeta: metav1.ObjectMeta{
 					Name: tt.siteName,
@@ -299,9 +317,16 @@ func TestDomainGeneration(t *testing.T) {
 				},
 			}
 
-			domain := site.Spec.Domain
-			if domain == "" {
-				domain = site.Name + "." + r.PagesDomain
+			domain, err := r.determineDomain(site)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
 			}
 
 			if domain != tt.wantDomain {
