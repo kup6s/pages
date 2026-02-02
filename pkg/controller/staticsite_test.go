@@ -61,8 +61,8 @@ func TestReconcile_NewSite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
-	if !result.Requeue {
-		t.Error("expected Requeue=true after adding finalizer")
+	if result.RequeueAfter == 0 {
+		t.Error("expected RequeueAfter > 0 after adding finalizer")
 	}
 
 	// Second Reconcile: generate sync token
@@ -70,8 +70,8 @@ func TestReconcile_NewSite(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
-	if !result.Requeue {
-		t.Error("expected Requeue=true after generating sync token")
+	if result.RequeueAfter == 0 {
+		t.Error("expected RequeueAfter > 0 after generating sync token")
 	}
 
 	// Third Reconcile: create resources
@@ -187,8 +187,8 @@ func TestReconcile_NotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v, want nil", err)
 	}
-	if result.Requeue {
-		t.Error("expected Requeue=false for not found")
+	if result.RequeueAfter != 0 {
+		t.Error("expected RequeueAfter=0 for not found")
 	}
 }
 
@@ -237,8 +237,8 @@ func TestReconcile_Deletion(t *testing.T) {
 	}
 
 	// Nach Finalizer-Entfernung: keine Requeue nötig
-	if result.Requeue {
-		t.Error("expected Requeue=false after deletion handling")
+	if result.RequeueAfter != 0 {
+		t.Error("expected RequeueAfter=0 after deletion handling")
 	}
 
 	// Das Objekt wird nach Finalizer-Entfernung vom API-Server gelöscht
