@@ -39,6 +39,8 @@ func main() {
 	var clusterIssuer string
 	var nginxNamespace string
 	var nginxServiceName string
+	var pagesTlsMode string
+	var pagesWildcardSecret string
 
 	flag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address for metrics endpoint")
 	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address for health probes")
@@ -46,6 +48,8 @@ func main() {
 	flag.StringVar(&clusterIssuer, "cluster-issuer", "letsencrypt-prod", "cert-manager ClusterIssuer name")
 	flag.StringVar(&nginxNamespace, "nginx-namespace", "kup6s-pages", "Namespace where nginx service runs")
 	flag.StringVar(&nginxServiceName, "nginx-service-name", "kup6s-pages-nginx", "Name of the nginx service in the system namespace")
+	flag.StringVar(&pagesTlsMode, "pages-tls-mode", "individual", "TLS mode for auto-generated domains: 'individual' (HTTP-01 per site) or 'wildcard' (pre-existing wildcard cert)")
+	flag.StringVar(&pagesWildcardSecret, "pages-wildcard-secret", "pages-wildcard-tls", "Secret name for wildcard certificate (only used when pages-tls-mode=wildcard)")
 	
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
@@ -99,13 +103,15 @@ func main() {
 
 	// Register controller
 	if err = (&controller.StaticSiteReconciler{
-		Client:           mgr.GetClient(),
-		DynamicClient:    dynamicClient,
-		Recorder:         mgr.GetEventRecorder("staticsite-controller"),
-		PagesDomain:      pagesDomain,
-		ClusterIssuer:    clusterIssuer,
-		NginxNamespace:   nginxNamespace,
-		NginxServiceName: nginxServiceName,
+		Client:              mgr.GetClient(),
+		DynamicClient:       dynamicClient,
+		Recorder:            mgr.GetEventRecorder("staticsite-controller"),
+		PagesDomain:         pagesDomain,
+		ClusterIssuer:       clusterIssuer,
+		NginxNamespace:      nginxNamespace,
+		NginxServiceName:    nginxServiceName,
+		PagesTlsMode:        pagesTlsMode,
+		PagesWildcardSecret: pagesWildcardSecret,
 	}).SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "StaticSite")
 		os.Exit(1)

@@ -58,6 +58,14 @@ func truncateK8sName(name string) string {
 	return strings.TrimRight(name, "-")
 }
 
+// TLS mode constants
+const (
+	// TlsModeIndividual creates individual certificates per site using HTTP-01 challenge
+	TlsModeIndividual = "individual"
+	// TlsModeWildcard references a pre-existing wildcard certificate
+	TlsModeWildcard = "wildcard"
+)
+
 // StaticSiteReconciler reconciles StaticSite resources
 type StaticSiteReconciler struct {
 	client.Client
@@ -65,10 +73,12 @@ type StaticSiteReconciler struct {
 	Recorder      events.EventRecorder
 
 	// Config
-	PagesDomain      string // e.g. "pages.kup6s.com"
-	ClusterIssuer    string // e.g. "letsencrypt-prod"
-	NginxNamespace   string // namespace where nginx service runs
-	NginxServiceName string // name of the nginx service (e.g. "kup6s-pages-nginx")
+	PagesDomain          string // e.g. "pages.kup6s.com"
+	ClusterIssuer        string // e.g. "letsencrypt-prod"
+	NginxNamespace       string // namespace where nginx service runs
+	NginxServiceName     string // name of the nginx service (e.g. "kup6s-pages-nginx")
+	PagesTlsMode         string // "individual" or "wildcard" for auto-generated domains
+	PagesWildcardSecret  string // secret name when using wildcard mode (e.g. "pages-wildcard-tls")
 }
 
 // GVRs for Traefik, cert-manager, and core resources
@@ -240,9 +250,13 @@ func (r *StaticSiteReconciler) reconcileNetworking(ctx context.Context, site *pa
 	return r.reconcileIngressRoute(ctx, site, domain)
 }
 
-// reconcileTLS creates the Certificate (if custom domain) and updates conditions.
+// reconcileTLS creates the Certificate (if needed) and updates conditions.
+// Certificates are created for:
+// - Custom domains (always)
+// - Auto-generated domains when PagesTlsMode is "individual" or empty (default)
 func (r *StaticSiteReconciler) reconcileTLS(ctx context.Context, site *pagesv1.StaticSite, domain string) error {
-	if site.Spec.Domain != "" {
+	needsCertificate := site.Spec.Domain != "" || r.PagesTlsMode != TlsModeWildcard
+	if needsCertificate {
 		if err := r.reconcileCertificate(ctx, site, domain); err != nil {
 			return err
 		}
@@ -268,7 +282,9 @@ func (r *StaticSiteReconciler) updateFinalStatus(ctx context.Context, site *page
 	if site.Spec.PathPrefix != "" {
 		site.Status.Resources.StripMiddleware = fmt.Sprintf("%s/%s", r.NginxNamespace, resourceNameWithSuffix(site, "strip"))
 	}
-	if site.Spec.Domain != "" {
+	// Certificate resource is set when using custom domain or individual TLS mode
+	hasManagedCert := site.Spec.Domain != "" || r.PagesTlsMode != TlsModeWildcard
+	if hasManagedCert {
 		certName := sanitizeDomainForResourceName(domain) + "-tls"
 		site.Status.Resources.Certificate = fmt.Sprintf("%s/%s", r.NginxNamespace, certName)
 	}
@@ -409,13 +425,20 @@ func (r *StaticSiteReconciler) reconcileIngressRoute(ctx context.Context, site *
 		}
 	}
 
-	// TLS Config - use domain-based naming for certificate sharing
+	// TLS Config - use domain-based naming for custom domains, configurable for auto-generated
 	tlsConfig := map[string]interface{}{}
 	if site.Spec.Domain != "" {
+		// Custom domain - always individual cert
 		tlsConfig["secretName"] = sanitizeDomainForResourceName(domain) + "-tls"
 	} else {
-		// Wildcard cert for *.pages.kup6s.com
-		tlsConfig["secretName"] = "pages-wildcard-tls"
+		// Auto-generated domain - configurable TLS mode
+		if r.PagesTlsMode == TlsModeWildcard {
+			// Use pre-existing wildcard certificate
+			tlsConfig["secretName"] = r.PagesWildcardSecret
+		} else {
+			// Individual cert for {site}.pages.kup6s.com (default behavior)
+			tlsConfig["secretName"] = sanitizeDomainForResourceName(domain) + "-tls"
+		}
 	}
 
 	irName := resourceName(site)
@@ -522,9 +545,10 @@ func (r *StaticSiteReconciler) reconcileCertificate(ctx context.Context, site *p
 func (r *StaticSiteReconciler) updateCertificateCondition(ctx context.Context, site *pagesv1.StaticSite, domain string) {
 	logger := log.FromContext(ctx)
 
-	// If no custom domain, no certificate to check
-	if site.Spec.Domain == "" {
-		// Remove condition if it exists (site switched from custom to auto domain)
+	// Check if this site has a managed certificate
+	hasManagedCert := site.Spec.Domain != "" || r.PagesTlsMode != TlsModeWildcard
+	if !hasManagedCert {
+		// Wildcard mode with auto-generated domain - no certificate to check
 		meta.RemoveStatusCondition(&site.Status.Conditions, pagesv1.ConditionCertificateReady)
 		return
 	}

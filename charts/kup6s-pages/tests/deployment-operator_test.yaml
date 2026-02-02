@@ -71,3 +71,31 @@ tests:
       - equal:
           path: metadata.labels["app.kubernetes.io/component"]
           value: operator
+
+  - it: should set default pages-tls-mode to individual
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --pages-tls-mode=individual
+
+  - it: should set default pages-wildcard-secret
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --pages-wildcard-secret=pages-wildcard-tls
+
+  - it: should set custom pages-tls-mode
+    set:
+      operator.pagesTlsMode: wildcard
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --pages-tls-mode=wildcard
+
+  - it: should set custom pages-wildcard-secret
+    set:
+      operator.pagesWildcardSecret: my-custom-wildcard-cert
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --pages-wildcard-secret=my-custom-wildcard-cert
