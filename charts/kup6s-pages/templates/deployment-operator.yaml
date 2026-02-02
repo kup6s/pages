@@ -42,6 +42,8 @@ spec:
             - --nginx-service-name={{ include "kup6s-pages.fullname" . }}-nginx
             - --metrics-bind-address={{ .Values.operator.metricsBindAddress }}
             - --health-probe-bind-address={{ .Values.operator.healthProbeBindAddress }}
+            - --pages-tls-mode={{ .Values.operator.pagesTlsMode }}
+            - --pages-wildcard-secret={{ .Values.operator.pagesWildcardSecret }}
             {{- range .Values.operator.extraArgs }}
             - {{ . }}
             {{- end }}

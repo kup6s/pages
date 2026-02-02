@@ -1072,12 +1072,13 @@ func TestUpdateCertificateCondition(t *testing.T) {
 		domain          string
 		certData        *unstructured.Unstructured
 		certGetErr      error
+		pagesTlsMode    string // TLS mode for auto-generated domains
 		wantStatus      metav1.ConditionStatus
 		wantReason      string
 		wantNoCondition bool
 	}{
 		{
-			name: "no custom domain removes condition",
+			name: "wildcard mode auto-domain removes condition",
 			site: &pagesv1.StaticSite{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:       "test-site",
@@ -1098,7 +1099,26 @@ func TestUpdateCertificateCondition(t *testing.T) {
 				},
 			},
 			domain:          "test-site.pages.kup6s.com",
+			pagesTlsMode:    TlsModeWildcard, // Wildcard mode - no managed cert
 			wantNoCondition: true,
+		},
+		{
+			name: "individual mode auto-domain checks certificate",
+			site: &pagesv1.StaticSite{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:       "test-site",
+					Namespace:  "default",
+					Generation: 1,
+				},
+				Spec: pagesv1.StaticSiteSpec{
+					Domain: "", // No custom domain
+				},
+			},
+			domain:       "test-site.pages.kup6s.com",
+			pagesTlsMode: TlsModeIndividual, // Individual mode - has managed cert
+			certGetErr:   &notFoundError{},
+			wantStatus:   metav1.ConditionFalse,
+			wantReason:   "CertificateNotFound",
 		},
 		{
 			name: "cert not found",
@@ -1381,6 +1401,7 @@ func TestUpdateCertificateCondition(t *testing.T) {
 			r := &StaticSiteReconciler{
 				DynamicClient:  dynClient,
 				NginxNamespace: "kup6s-pages",
+				PagesTlsMode:   tt.pagesTlsMode,
 			}
 
 			r.updateCertificateCondition(context.Background(), tt.site, tt.domain)
@@ -3222,4 +3243,380 @@ func TestReconcileCertificate_GetError(t *testing.T) {
 	if updatedSite.Status.Message != "certificate get failed" {
 		t.Errorf("Message = %q, want %q", updatedSite.Status.Message, "certificate get failed")
 	}
+}
+
+func TestTlsModeConstants(t *testing.T) {
+	if TlsModeIndividual != "individual" {
+		t.Errorf("TlsModeIndividual = %q, want %q", TlsModeIndividual, "individual")
+	}
+	if TlsModeWildcard != "wildcard" {
+		t.Errorf("TlsModeWildcard = %q, want %q", TlsModeWildcard, "wildcard")
+	}
+}
+
+func TestReconcile_AutoDomainWildcardMode(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	site := &pagesv1.StaticSite{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "wildcard-site",
+			Namespace:  "default",
+			UID:        "test-uid-wildcard",
+			Finalizers: []string{finalizerName},
+		},
+		Spec: pagesv1.StaticSiteSpec{
+			Repo:   "https://github.com/example/repo.git",
+			Branch: "main",
+			// No custom domain - uses auto-generated domain
+		},
+		Status: pagesv1.StaticSiteStatus{
+			SyncToken: "existing-token", // Skip token generation
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(site).
+		WithStatusSubresource(site).
+		Build()
+
+	dc := newCapturingDynamicClient()
+	r := &StaticSiteReconciler{
+		Client:              fakeClient,
+		DynamicClient:       dc,
+		Recorder:            events.NewFakeRecorder(10),
+		PagesDomain:         "pages.kup6s.com",
+		ClusterIssuer:       "letsencrypt-prod",
+		NginxNamespace:      "kup6s-pages",
+		NginxServiceName:    "kup6s-pages-nginx",
+		PagesTlsMode:        TlsModeWildcard,
+		PagesWildcardSecret: "my-wildcard-tls",
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "wildcard-site",
+			Namespace: "default",
+		},
+	}
+
+	_, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	// Check IngressRoute was created with wildcard secret
+	ir := dc.getCreatedResource("ingressroutes")
+	if ir == nil {
+		t.Fatal("IngressRoute was not created")
+	}
+
+	tls, found, err := unstructured.NestedMap(ir.Object, "spec", "tls")
+	if err != nil || !found {
+		t.Fatal("IngressRoute tls config not found")
+	}
+	secretName := tls["secretName"].(string)
+	if secretName != "my-wildcard-tls" {
+		t.Errorf("IngressRoute tls.secretName = %q, want %q", secretName, "my-wildcard-tls")
+	}
+
+	// Verify NO Certificate was created (wildcard mode uses existing cert)
+	cert := dc.getCreatedResource("certificates")
+	if cert != nil {
+		t.Error("Certificate should NOT be created in wildcard mode for auto-generated domains")
+	}
+}
+
+func TestReconcile_AutoDomainIndividualMode(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	site := &pagesv1.StaticSite{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "individual-site",
+			Namespace:  "default",
+			UID:        "test-uid-individual",
+			Finalizers: []string{finalizerName},
+		},
+		Spec: pagesv1.StaticSiteSpec{
+			Repo:   "https://github.com/example/repo.git",
+			Branch: "main",
+			// No custom domain - uses auto-generated domain
+		},
+		Status: pagesv1.StaticSiteStatus{
+			SyncToken: "existing-token", // Skip token generation
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(site).
+		WithStatusSubresource(site).
+		Build()
+
+	dc := newCapturingDynamicClient()
+	r := &StaticSiteReconciler{
+		Client:              fakeClient,
+		DynamicClient:       dc,
+		Recorder:            events.NewFakeRecorder(10),
+		PagesDomain:         "pages.kup6s.com",
+		ClusterIssuer:       "letsencrypt-prod",
+		NginxNamespace:      "kup6s-pages",
+		NginxServiceName:    "kup6s-pages-nginx",
+		PagesTlsMode:        TlsModeIndividual,
+		PagesWildcardSecret: "", // Not used in individual mode
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "individual-site",
+			Namespace: "default",
+		},
+	}
+
+	_, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	// Check IngressRoute was created with individual secret name
+	ir := dc.getCreatedResource("ingressroutes")
+	if ir == nil {
+		t.Fatal("IngressRoute was not created")
+	}
+
+	tls, found, err := unstructured.NestedMap(ir.Object, "spec", "tls")
+	if err != nil || !found {
+		t.Fatal("IngressRoute tls config not found")
+	}
+	// For auto-generated domain "individual-site.pages.kup6s.com"
+	// the secret should be "individual-site-pages-kup6s-com-tls"
+	secretName := tls["secretName"].(string)
+	expectedSecret := "individual-site-pages-kup6s-com-tls"
+	if secretName != expectedSecret {
+		t.Errorf("IngressRoute tls.secretName = %q, want %q", secretName, expectedSecret)
+	}
+
+	// Verify Certificate WAS created (individual mode creates per-site certs)
+	cert := dc.getCreatedResource("certificates")
+	if cert == nil {
+		t.Fatal("Certificate should be created in individual mode for auto-generated domains")
+	}
+
+	// Verify certificate domain
+	dnsNames, found, _ := unstructured.NestedStringSlice(cert.Object, "spec", "dnsNames")
+	if !found || len(dnsNames) == 0 {
+		t.Fatal("Certificate dnsNames not found")
+	}
+	if dnsNames[0] != "individual-site.pages.kup6s.com" {
+		t.Errorf("Certificate dnsNames[0] = %q, want %q", dnsNames[0], "individual-site.pages.kup6s.com")
+	}
+}
+
+func TestReconcile_CustomDomainAlwaysIndividual(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	// Custom domain sites should always use individual certs, regardless of PagesTlsMode
+	site := &pagesv1.StaticSite{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "custom-domain-site",
+			Namespace:  "default",
+			UID:        "test-uid-custom",
+			Finalizers: []string{finalizerName},
+		},
+		Spec: pagesv1.StaticSiteSpec{
+			Repo:   "https://github.com/example/repo.git",
+			Branch: "main",
+			Domain: "www.example.com",
+		},
+		Status: pagesv1.StaticSiteStatus{
+			SyncToken: "existing-token",
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(site).
+		WithStatusSubresource(site).
+		Build()
+
+	dc := newCapturingDynamicClient()
+	r := &StaticSiteReconciler{
+		Client:              fakeClient,
+		DynamicClient:       dc,
+		Recorder:            events.NewFakeRecorder(10),
+		PagesDomain:         "pages.kup6s.com",
+		ClusterIssuer:       "letsencrypt-prod",
+		NginxNamespace:      "kup6s-pages",
+		NginxServiceName:    "kup6s-pages-nginx",
+		PagesTlsMode:        TlsModeWildcard, // Even with wildcard mode
+		PagesWildcardSecret: "pages-wildcard-tls",
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "custom-domain-site",
+			Namespace: "default",
+		},
+	}
+
+	_, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	// Check IngressRoute was created with domain-based secret (NOT wildcard)
+	ir := dc.getCreatedResource("ingressroutes")
+	if ir == nil {
+		t.Fatal("IngressRoute was not created")
+	}
+
+	tls, found, err := unstructured.NestedMap(ir.Object, "spec", "tls")
+	if err != nil || !found {
+		t.Fatal("IngressRoute tls config not found")
+	}
+	secretName := tls["secretName"].(string)
+	if secretName != "www-example-com-tls" {
+		t.Errorf("IngressRoute tls.secretName = %q, want %q", secretName, "www-example-com-tls")
+	}
+
+	// Verify Certificate WAS created for custom domain
+	cert := dc.getCreatedResource("certificates")
+	if cert == nil {
+		t.Fatal("Certificate should be created for custom domain sites")
+	}
+}
+
+func TestReconcile_DefaultTlsModeIsIndividual(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	site := &pagesv1.StaticSite{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "default-mode-site",
+			Namespace:  "default",
+			UID:        "test-uid-default",
+			Finalizers: []string{finalizerName},
+		},
+		Spec: pagesv1.StaticSiteSpec{
+			Repo:   "https://github.com/example/repo.git",
+			Branch: "main",
+		},
+		Status: pagesv1.StaticSiteStatus{
+			SyncToken: "existing-token",
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(site).
+		WithStatusSubresource(site).
+		Build()
+
+	dc := newCapturingDynamicClient()
+	r := &StaticSiteReconciler{
+		Client:              fakeClient,
+		DynamicClient:       dc,
+		Recorder:            events.NewFakeRecorder(10),
+		PagesDomain:         "pages.kup6s.com",
+		ClusterIssuer:       "letsencrypt-prod",
+		NginxNamespace:      "kup6s-pages",
+		NginxServiceName:    "kup6s-pages-nginx",
+		PagesTlsMode:        "", // Empty = default to individual
+		PagesWildcardSecret: "",
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "default-mode-site",
+			Namespace: "default",
+		},
+	}
+
+	_, err := r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v", err)
+	}
+
+	// Should behave like individual mode - create certificate
+	cert := dc.getCreatedResource("certificates")
+	if cert == nil {
+		t.Fatal("Certificate should be created when PagesTlsMode is empty (default to individual)")
+	}
+}
+
+// capturingDynamicClient captures created resources for verification in tests
+type capturingDynamicClient struct {
+	created map[string]*unstructured.Unstructured
+}
+
+func newCapturingDynamicClient() *capturingDynamicClient {
+	return &capturingDynamicClient{
+		created: make(map[string]*unstructured.Unstructured),
+	}
+}
+
+func (c *capturingDynamicClient) Resource(resource schema.GroupVersionResource) dynamic.NamespaceableResourceInterface {
+	return &capturingNamespaceableResource{client: c, resource: resource.Resource}
+}
+
+func (c *capturingDynamicClient) getCreatedResource(resourceType string) *unstructured.Unstructured {
+	return c.created[resourceType]
+}
+
+type capturingNamespaceableResource struct {
+	client   *capturingDynamicClient
+	resource string
+}
+
+func (f *capturingNamespaceableResource) Namespace(ns string) dynamic.ResourceInterface {
+	return f
+}
+
+func (f *capturingNamespaceableResource) List(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+	return &unstructured.UnstructuredList{}, nil
+}
+
+func (f *capturingNamespaceableResource) Create(ctx context.Context, obj *unstructured.Unstructured, opts metav1.CreateOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	// Store reference directly - no DeepCopy needed for test verification
+	f.client.created[f.resource] = obj
+	return obj, nil
+}
+
+func (f *capturingNamespaceableResource) Update(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (f *capturingNamespaceableResource) UpdateStatus(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (f *capturingNamespaceableResource) Delete(ctx context.Context, name string, opts metav1.DeleteOptions, subresources ...string) error {
+	return nil
+}
+
+func (f *capturingNamespaceableResource) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
+	return nil
+}
+
+func (f *capturingNamespaceableResource) Get(ctx context.Context, name string, opts metav1.GetOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return nil, &notFoundError{}
+}
+
+func (f *capturingNamespaceableResource) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
+	return nil, nil
+}
+
+func (f *capturingNamespaceableResource) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return &unstructured.Unstructured{}, nil
+}
+
+func (f *capturingNamespaceableResource) Apply(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (f *capturingNamespaceableResource) ApplyStatus(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions) (*unstructured.Unstructured, error) {
+	return obj, nil
 }

@@ -44,6 +44,15 @@ operator:
   # -- cert-manager ClusterIssuer name for TLS certificates
   clusterIssuer: "letsencrypt-prod"
 
+  # -- TLS mode for auto-generated domains: 'individual' (HTTP-01 per site) or 'wildcard' (pre-existing wildcard cert)
+  # Individual mode creates a Certificate per site using HTTP-01 challenge.
+  # Wildcard mode references a pre-existing wildcard certificate (requires DNS-01 setup externally).
+  pagesTlsMode: "individual"
+
+  # -- Secret name for wildcard certificate (only used when pagesTlsMode=wildcard)
+  # This must be a pre-existing secret containing a wildcard cert for *.pagesDomain
+  pagesWildcardSecret: "pages-wildcard-tls"
+
   # -- Metrics bind address
   metricsBindAddress: ":8080"
 
