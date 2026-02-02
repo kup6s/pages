@@ -1,0 +1,200 @@
+suite: service tests
+templates:
+  - templates/service-nginx.yaml
+  - templates/service-syncer.yaml
+
+tests:
+  # ==========================================================================
+  # nginx Service Tests
+  # ==========================================================================
+  - it: should create nginx service with default values
+    template: templates/service-nginx.yaml
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - equal:
+          path: spec.ports[0].name
+          value: http
+      - equal:
+          path: spec.ports[0].port
+          value: 80
+      - equal:
+          path: spec.ports[0].targetPort
+          value: 80
+
+  - it: should use correct nginx service name convention
+    template: templates/service-nginx.yaml
+    asserts:
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-kup6s-pages-nginx
+
+  - it: should have nginx component label
+    template: templates/service-nginx.yaml
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: nginx
+
+  - it: should have nginx selector labels matching deployment
+    template: templates/service-nginx.yaml
+    asserts:
+      - equal:
+          path: spec.selector["app.kubernetes.io/name"]
+          value: kup6s-pages
+      - equal:
+          path: spec.selector["app.kubernetes.io/instance"]
+          value: RELEASE-NAME
+      - equal:
+          path: spec.selector["app.kubernetes.io/component"]
+          value: nginx
+
+  - it: should apply custom nginx service type
+    template: templates/service-nginx.yaml
+    set:
+      nginx.service.type: NodePort
+    asserts:
+      - equal:
+          path: spec.type
+          value: NodePort
+
+  - it: should apply custom nginx service port
+    template: templates/service-nginx.yaml
+    set:
+      nginx.service.port: 8080
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 8080
+
+  - it: should apply nginx service annotations
+    template: templates/service-nginx.yaml
+    set:
+      nginx.service.annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "80"
+    asserts:
+      - equal:
+          path: metadata.annotations["prometheus.io/scrape"]
+          value: "true"
+      - equal:
+          path: metadata.annotations["prometheus.io/port"]
+          value: "80"
+
+  # ==========================================================================
+  # syncer Service Tests
+  # ==========================================================================
+  - it: should create syncer service with default values
+    template: templates/service-syncer.yaml
+    asserts:
+      - isKind:
+          of: Service
+      - equal:
+          path: spec.type
+          value: ClusterIP
+      - equal:
+          path: spec.ports[0].name
+          value: webhook
+      - equal:
+          path: spec.ports[0].port
+          value: 80
+      - equal:
+          path: spec.ports[0].targetPort
+          value: 8080
+
+  - it: should use correct syncer service name convention
+    template: templates/service-syncer.yaml
+    asserts:
+      - equal:
+          path: metadata.name
+          value: RELEASE-NAME-kup6s-pages-syncer
+
+  - it: should have syncer component label
+    template: templates/service-syncer.yaml
+    asserts:
+      - equal:
+          path: metadata.labels["app.kubernetes.io/component"]
+          value: syncer
+
+  - it: should have syncer selector labels matching deployment
+    template: templates/service-syncer.yaml
+    asserts:
+      - equal:
+          path: spec.selector["app.kubernetes.io/name"]
+          value: kup6s-pages
+      - equal:
+          path: spec.selector["app.kubernetes.io/instance"]
+          value: RELEASE-NAME
+      - equal:
+          path: spec.selector["app.kubernetes.io/component"]
+          value: syncer
+
+  - it: should apply custom syncer service type
+    template: templates/service-syncer.yaml
+    set:
+      syncer.service.type: LoadBalancer
+    asserts:
+      - equal:
+          path: spec.type
+          value: LoadBalancer
+
+  - it: should apply custom syncer service port
+    template: templates/service-syncer.yaml
+    set:
+      syncer.service.port: 8080
+    asserts:
+      - equal:
+          path: spec.ports[0].port
+          value: 8080
+
+  - it: should apply syncer service annotations
+    template: templates/service-syncer.yaml
+    set:
+      syncer.service.annotations:
+        service.beta.kubernetes.io/aws-load-balancer-type: nlb
+    asserts:
+      - equal:
+          path: metadata.annotations["service.beta.kubernetes.io/aws-load-balancer-type"]
+          value: nlb
+
+  # ==========================================================================
+  # Cross-template consistency tests
+  # ==========================================================================
+  - it: should use consistent naming with fullnameOverride for nginx
+    template: templates/service-nginx.yaml
+    set:
+      fullnameOverride: my-pages
+    asserts:
+      - equal:
+          path: metadata.name
+          value: my-pages-nginx
+
+  - it: should use consistent naming with fullnameOverride for syncer
+    template: templates/service-syncer.yaml
+    set:
+      fullnameOverride: my-pages
+    asserts:
+      - equal:
+          path: metadata.name
+          value: my-pages-syncer
+
+  - it: should use target namespace for nginx service
+    template: templates/service-nginx.yaml
+    set:
+      namespace: custom-namespace
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: custom-namespace
+
+  - it: should use target namespace for syncer service
+    template: templates/service-syncer.yaml
+    set:
+      namespace: custom-namespace
+    asserts:
+      - equal:
+          path: metadata.namespace
+          value: custom-namespace
