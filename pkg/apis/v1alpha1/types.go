@@ -38,6 +38,7 @@ type StaticSiteSpec struct {
 
 	// Path is the subpath in the repo that gets served (default: /)
 	// e.g. "/dist" or "/public" for build output
+	// +kubebuilder:validation:Pattern=`^(/[a-zA-Z0-9._-]*[a-zA-Z0-9_-][a-zA-Z0-9._-]*)*/?$`
 	// +kubebuilder:default=/
 	// +optional
 	Path string `json:"path,omitempty"`
