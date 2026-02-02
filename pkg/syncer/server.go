@@ -12,11 +12,15 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
+
+// DefaultShutdownTimeout is the default timeout for graceful server shutdown
+const DefaultShutdownTimeout = 30 * time.Second
 
 // WebhookServer provides HTTP endpoints for webhooks
 type WebhookServer struct {
@@ -24,6 +28,10 @@ type WebhookServer struct {
 
 	// Optional: Webhook secret for validation
 	WebhookSecret string
+
+	// ShutdownTimeout is the timeout for graceful server shutdown.
+	// If zero, DefaultShutdownTimeout is used.
+	ShutdownTimeout time.Duration
 }
 
 // ServeHTTP implements http.Handler
@@ -297,7 +305,7 @@ func (w *WebhookServer) syncByRepo(ctx context.Context, repoURL, branch string) 
 // Start starts the HTTP server
 func (w *WebhookServer) Start(ctx context.Context, addr string) error {
 	logger := log.FromContext(ctx)
-	
+
 	server := &http.Server{
 		Addr:    addr,
 		Handler: w,
@@ -305,7 +313,13 @@ func (w *WebhookServer) Start(ctx context.Context, addr string) error {
 
 	go func() {
 		<-ctx.Done()
-		if err := server.Shutdown(context.Background()); err != nil {
+		timeout := w.ShutdownTimeout
+		if timeout == 0 {
+			timeout = DefaultShutdownTimeout
+		}
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
 			logger.Error(err, "Server shutdown error")
 		}
 	}()

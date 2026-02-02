@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestValidateWebhookSignature(t *testing.T) {
@@ -275,5 +276,19 @@ func TestDeleteEndpointOldFormatReturns404(t *testing.T) {
 
 	if rr.Code != http.StatusNotFound {
 		t.Errorf("old format: status = %d, want %d (NotFound)", rr.Code, http.StatusNotFound)
+	}
+}
+
+func TestShutdownTimeoutDefault(t *testing.T) {
+	w := &WebhookServer{}
+
+	if w.ShutdownTimeout != 0 {
+		t.Errorf("default ShutdownTimeout = %v, want 0 (uses DefaultShutdownTimeout)", w.ShutdownTimeout)
+	}
+}
+
+func TestDefaultShutdownTimeoutValue(t *testing.T) {
+	if DefaultShutdownTimeout != 30*time.Second {
+		t.Errorf("DefaultShutdownTimeout = %v, want 30s", DefaultShutdownTimeout)
 	}
 }
