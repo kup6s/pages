@@ -305,7 +305,9 @@ func (w *WebhookServer) Start(ctx context.Context, addr string) error {
 
 	go func() {
 		<-ctx.Done()
-		_ = server.Shutdown(context.Background())
+		if err := server.Shutdown(context.Background()); err != nil {
+			logger.Error(err, "Server shutdown error")
+		}
 	}()
 
 	logger.Info("Starting webhook server", "addr", addr)
