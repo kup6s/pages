@@ -152,11 +152,9 @@ func validatePathPrefix(site *pagesv1.StaticSite) error {
 func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
-	// 1. Load StaticSite
 	site := &pagesv1.StaticSite{}
 	if err := r.Get(ctx, req.NamespacedName, site); err != nil {
 		if errors.IsNotFound(err) {
-			// Was deleted, nothing to do (Finalizer cleaned up)
 			return ctrl.Result{}, nil
 		}
 		return ctrl.Result{}, err
@@ -164,66 +162,90 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	logger.Info("Reconciling StaticSite", "name", site.Name, "domain", site.Spec.Domain)
 
-	// 2. Deletion handling
 	if !site.DeletionTimestamp.IsZero() {
 		return r.handleDeletion(ctx, site)
 	}
 
-	// 3. Add finalizer if not present
-	if !controllerutil.ContainsFinalizer(site, finalizerName) {
-		controllerutil.AddFinalizer(site, finalizerName)
-		if err := r.Update(ctx, site); err != nil {
-			return ctrl.Result{}, err
-		}
-		return ctrl.Result{RequeueAfter: immediateRequeueDelay}, nil
+	if result, err := r.ensureFinalizerAndToken(ctx, site); result != nil || err != nil {
+		return *result, err
 	}
 
-	// 4. Generate sync token if not present
-	if site.Status.SyncToken == "" {
-		token, err := generateSecureToken(defaultTokenLength)
-		if err != nil {
-			return r.setError(ctx, site, "TokenGenerationFailed", err)
-		}
-		site.Status.SyncToken = token
-		if err := r.Status().Update(ctx, site); err != nil {
-			return ctrl.Result{}, err
-		}
-		logger.Info("Generated sync token", "name", site.Name)
-		return ctrl.Result{RequeueAfter: immediateRequeueDelay}, nil
-	}
-
-	// 5. Validate pathPrefix
 	if err := validatePathPrefix(site); err != nil {
 		return r.setError(ctx, site, "ValidationFailed", err)
 	}
 
-	// 6. Determine domain (custom or generated)
-	domain := site.Spec.Domain
-	if domain == "" {
-		domain = fmt.Sprintf("%s.%s", site.Name, r.PagesDomain)
+	domain := r.determineDomain(site)
+
+	if err := r.reconcileNetworking(ctx, site, domain); err != nil {
+		return r.setError(ctx, site, "NetworkingFailed", err)
 	}
 
-	// 7. Create/update Middlewares (stripPrefix + addPrefix) in system namespace
+	if err := r.reconcileTLS(ctx, site, domain); err != nil {
+		return r.setError(ctx, site, "TLSFailed", err)
+	}
+
+	return r.updateFinalStatus(ctx, site, domain)
+}
+
+// ensureFinalizerAndToken adds the finalizer and generates a sync token if needed.
+// Returns a non-nil result if a requeue is needed, otherwise returns nil for both.
+func (r *StaticSiteReconciler) ensureFinalizerAndToken(ctx context.Context, site *pagesv1.StaticSite) (*ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+
+	if !controllerutil.ContainsFinalizer(site, finalizerName) {
+		controllerutil.AddFinalizer(site, finalizerName)
+		if err := r.Update(ctx, site); err != nil {
+			return &ctrl.Result{}, err
+		}
+		return &ctrl.Result{RequeueAfter: immediateRequeueDelay}, nil
+	}
+
+	if site.Status.SyncToken == "" {
+		token, err := generateSecureToken(defaultTokenLength)
+		if err != nil {
+			result, setErr := r.setError(ctx, site, "TokenGenerationFailed", err)
+			return &result, setErr
+		}
+		site.Status.SyncToken = token
+		if err := r.Status().Update(ctx, site); err != nil {
+			return &ctrl.Result{}, err
+		}
+		logger.Info("Generated sync token", "name", site.Name)
+		return &ctrl.Result{RequeueAfter: immediateRequeueDelay}, nil
+	}
+
+	return nil, nil
+}
+
+// determineDomain returns the domain for the site (custom or auto-generated).
+func (r *StaticSiteReconciler) determineDomain(site *pagesv1.StaticSite) string {
+	if site.Spec.Domain != "" {
+		return site.Spec.Domain
+	}
+	return fmt.Sprintf("%s.%s", site.Name, r.PagesDomain)
+}
+
+// reconcileNetworking creates or updates the Traefik Middleware and IngressRoute.
+func (r *StaticSiteReconciler) reconcileNetworking(ctx context.Context, site *pagesv1.StaticSite, domain string) error {
 	if err := r.reconcileMiddleware(ctx, site); err != nil {
-		return r.setError(ctx, site, "MiddlewareFailed", err)
+		return err
 	}
+	return r.reconcileIngressRoute(ctx, site, domain)
+}
 
-	// 8. Create/update IngressRoute in system namespace
-	if err := r.reconcileIngressRoute(ctx, site, domain); err != nil {
-		return r.setError(ctx, site, "IngressFailed", err)
-	}
-
-	// 9. Create Certificate in system namespace (if custom domain)
+// reconcileTLS creates the Certificate (if custom domain) and updates conditions.
+func (r *StaticSiteReconciler) reconcileTLS(ctx context.Context, site *pagesv1.StaticSite, domain string) error {
 	if site.Spec.Domain != "" {
 		if err := r.reconcileCertificate(ctx, site, domain); err != nil {
-			return r.setError(ctx, site, "CertificateFailed", err)
+			return err
 		}
 	}
-
-	// 10. Update Certificate condition (read actual cert-manager status)
 	r.updateCertificateCondition(ctx, site, domain)
+	return nil
+}
 
-	// 11. Update status with resource references
+// updateFinalStatus sets the final status fields and emits an event.
+func (r *StaticSiteReconciler) updateFinalStatus(ctx context.Context, site *pagesv1.StaticSite, domain string) (ctrl.Result, error) {
 	site.Status.Phase = pagesv1.PhaseReady
 	site.Status.Message = "Site configured, waiting for sync"
 	if site.Spec.PathPrefix != "" {
@@ -232,7 +254,6 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		site.Status.URL = fmt.Sprintf("https://%s", domain)
 	}
 
-	// Populate resource references for visibility
 	site.Status.Resources = &pagesv1.ManagedResources{
 		IngressRoute: fmt.Sprintf("%s/%s", r.NginxNamespace, resourceName(site)),
 		Middleware:   fmt.Sprintf("%s/%s", r.NginxNamespace, resourceNameWithSuffix(site, "prefix")),
