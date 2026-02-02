@@ -6,6 +6,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"strings"
 	"time"
 
@@ -27,6 +28,9 @@ import (
 
 	pagesv1 "github.com/kup6s/pages/pkg/apis/v1alpha1"
 )
+
+// randReader is the source of randomness for token generation (injectable for testing)
+var randReader io.Reader = rand.Reader
 
 const (
 	finalizerName         = "pages.kup6s.com/finalizer"
@@ -98,13 +102,12 @@ func resourceNameWithSuffix(site *pagesv1.StaticSite, suffix string) string {
 }
 
 // generateSecureToken creates a cryptographically secure random token
-func generateSecureToken(length int) string {
+func generateSecureToken(length int) (string, error) {
 	b := make([]byte, length)
-	if _, err := rand.Read(b); err != nil {
-		// Fallback should never happen with crypto/rand
-		panic("failed to generate random bytes: " + err.Error())
+	if _, err := randReader.Read(b); err != nil {
+		return "", fmt.Errorf("failed to generate random bytes: %w", err)
 	}
-	return base64.URLEncoding.EncodeToString(b)[:length]
+	return base64.URLEncoding.EncodeToString(b)[:length], nil
 }
 
 // validatePathPrefix checks if pathPrefix configuration is valid
@@ -165,7 +168,11 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 
 	// 4. Generate sync token if not present
 	if site.Status.SyncToken == "" {
-		site.Status.SyncToken = generateSecureToken(32)
+		token, err := generateSecureToken(32)
+		if err != nil {
+			return r.setError(ctx, site, "TokenGenerationFailed", err)
+		}
+		site.Status.SyncToken = token
 		if err := r.Status().Update(ctx, site); err != nil {
 			return ctrl.Result{}, err
 		}
