@@ -144,6 +144,12 @@ const (
 	PhaseError   Phase = "Error"
 )
 
+// Condition types for StaticSite
+const (
+	// ConditionCertificateReady indicates whether the TLS certificate is ready
+	ConditionCertificateReady = "CertificateReady"
+)
+
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +kubebuilder:object:root=true
 
