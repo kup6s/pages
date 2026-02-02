@@ -22,6 +22,23 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
+// removePathOrSymlink removes a path, handling both symlinks and regular files/directories.
+// Returns nil if path doesn't exist.
+func removePathOrSymlink(path string) error {
+	info, err := os.Lstat(path)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	if info.Mode()&os.ModeSymlink != 0 {
+		return os.Remove(path)
+	}
+	return os.RemoveAll(path)
+}
+
 // Syncer synchronizes all StaticSites
 type Syncer struct {
 	DynamicClient dynamic.Interface
@@ -268,11 +285,9 @@ func (s *Syncer) setupSubpath(siteName, repoDir, subpath string) error {
 	// Symlink path: /sites/<name> (where nginx expects the files)
 	linkPath := filepath.Join(s.SitesRoot, siteName)
 
-	// Remove old symlink if present
-	if info, err := os.Lstat(linkPath); err == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
-			_ = os.Remove(linkPath)
-		}
+	// Remove old symlink or directory if present
+	if err := removePathOrSymlink(linkPath); err != nil {
+		return fmt.Errorf("failed to remove existing path %s: %w", linkPath, err)
 	}
 
 	// Create symlink
@@ -431,13 +446,8 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 			sitePath := filepath.Join(s.SitesRoot, name)
 			logger.Info("Removing orphaned site directory", "name", name)
 
-			// Remove symlink or directory
-			if info, err := os.Lstat(sitePath); err == nil {
-				if info.Mode()&os.ModeSymlink != 0 {
-					_ = os.Remove(sitePath)
-				} else {
-					_ = os.RemoveAll(sitePath)
-				}
+			if err := removePathOrSymlink(sitePath); err != nil {
+				logger.Error(err, "Failed to remove orphaned site", "path", sitePath)
 			}
 		}
 	}
@@ -465,17 +475,15 @@ func (s *Syncer) DeleteSite(ctx context.Context, name string) error {
 
 	// Remove symlink/directory in /sites
 	sitePath := filepath.Join(s.SitesRoot, name)
-	if info, err := os.Lstat(sitePath); err == nil {
-		if info.Mode()&os.ModeSymlink != 0 {
-			_ = os.Remove(sitePath)
-		} else {
-			_ = os.RemoveAll(sitePath)
-		}
+	if err := removePathOrSymlink(sitePath); err != nil {
+		return fmt.Errorf("failed to remove site path %s: %w", sitePath, err)
 	}
 
 	// Remove repo directory in .repos
 	repoPath := filepath.Join(s.SitesRoot, ".repos", name)
-	_ = os.RemoveAll(repoPath)
+	if err := removePathOrSymlink(repoPath); err != nil {
+		return fmt.Errorf("failed to remove repo path %s: %w", repoPath, err)
+	}
 
 	return nil
 }
