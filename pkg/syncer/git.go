@@ -33,16 +33,17 @@ type Syncer struct {
 	// Default sync interval
 	DefaultInterval time.Duration
 
-	// AllowedHosts is a list of allowed Git hosts (SSRF protection)
-	// If empty, all hosts are allowed
+	// AllowedHosts is a list of allowed Git hosts (SSRF protection).
+	// This field is mandatory - startup will fail if empty.
 	AllowedHosts []string
 }
 
 // validateRepoURL checks if the repo URL is allowed (SSRF protection)
 func (s *Syncer) validateRepoURL(repoURL string) error {
-	// If no allowlist configured, allow everything
+	// Defensive check - AllowedHosts should never be empty at runtime
+	// since main() validates this at startup
 	if len(s.AllowedHosts) == 0 {
-		return nil
+		return fmt.Errorf("internal error: AllowedHosts not configured")
 	}
 
 	parsed, err := url.Parse(repoURL)

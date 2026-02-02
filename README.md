@@ -76,6 +76,7 @@ helm install pages oci://ghcr.io/kup6s/kup6s-pages --version 0.1.0
 helm install pages oci://ghcr.io/kup6s/kup6s-pages \
   --set operator.pagesDomain=pages.example.com \
   --set operator.clusterIssuer=letsencrypt-prod \
+  --set 'syncer.allowedHosts={github.com,gitlab.com}' \
   --set storage.storageClassName=longhorn \
   --set webhook.enabled=true \
   --set webhook.domain=webhook.pages.example.com
@@ -87,6 +88,7 @@ helm install pages oci://ghcr.io/kup6s/kup6s-pages \
 |-------|---------|-------------|
 | `operator.pagesDomain` | `pages.kup6s.com` | Base domain for auto-generated URLs |
 | `operator.clusterIssuer` | `letsencrypt-prod` | cert-manager ClusterIssuer |
+| `syncer.allowedHosts` | **Required** | Allowed Git hosts (SSRF protection) |
 | `storage.size` | `10Gi` | PVC size for sites |
 | `storage.storageClassName` | (default) | StorageClass (must support RWX) |
 | `nginx.replicas` | `2` | nginx replicas for HA |
@@ -368,7 +370,9 @@ The syncer accepts these flags:
 | `--sites-root` | `/sites` | Directory where sites are stored |
 | `--sync-interval` | `5m` | Default interval for polling repos |
 | `--webhook-addr` | `:8080` | Webhook HTTP server address |
-| `--allowed-hosts` | (none) | Comma-separated allowlist of Git hosts (SSRF protection) |
+| `--allowed-hosts` | **Required** | Comma-separated allowlist of Git hosts (SSRF protection) |
+
+Common allowed hosts examples: `github.com`, `gitlab.com`, `bitbucket.org`, `codeberg.org`. Wildcards are supported for self-hosted instances: `*.gitlab.example.com`.
 
 ## Troubleshooting
 
@@ -476,8 +480,8 @@ helm unittest charts/kup6s-pages
 # Operator (requires kubeconfig)
 go run ./cmd/operator --pages-domain=pages.local --cluster-issuer=selfsigned
 
-# Syncer
-go run ./cmd/syncer --sites-root=/tmp/sites --sync-interval=1m
+# Syncer (--allowed-hosts is required)
+go run ./cmd/syncer --sites-root=/tmp/sites --sync-interval=1m --allowed-hosts=github.com,gitlab.com
 ```
 
 ## License

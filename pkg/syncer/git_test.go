@@ -17,10 +17,10 @@ func TestValidateRepoURL(t *testing.T) {
 		wantErr      bool
 	}{
 		{
-			name:         "empty allowlist allows all",
+			name:         "empty allowlist returns error",
 			allowedHosts: nil,
 			repoURL:      "https://github.com/example/repo.git",
-			wantErr:      false,
+			wantErr:      true, // AllowedHosts is now mandatory
 		},
 		{
 			name:         "exact match allowed",
