@@ -164,7 +164,7 @@ func TestForgejoPayloadParsing(t *testing.T) {
 		}
 	}`
 
-	var p ForgejoWebhookPayload
+	var p WebhookPayload
 	if err := json.Unmarshal([]byte(payload), &p); err != nil {
 		t.Fatalf("failed to parse payload: %v", err)
 	}
@@ -189,7 +189,7 @@ func TestGitHubPayloadParsing(t *testing.T) {
 		}
 	}`
 
-	var p GitHubWebhookPayload
+	var p WebhookPayload
 	if err := json.Unmarshal([]byte(payload), &p); err != nil {
 		t.Fatalf("failed to parse payload: %v", err)
 	}
