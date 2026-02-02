@@ -7,3 +7,6 @@ coverage.out
 # Binaries
 /operator
 /syncer
+
+# Git
+.worktrees/
