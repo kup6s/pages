@@ -37,7 +37,6 @@ type WebhookServer struct {
 // ServeHTTP implements http.Handler
 func (w *WebhookServer) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	_ = log.FromContext(ctx) // Logger for later use
 
 	// Routing
 	path := strings.TrimPrefix(r.URL.Path, "/")
