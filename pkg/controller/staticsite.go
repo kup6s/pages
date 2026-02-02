@@ -10,15 +10,20 @@ import (
 	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/reconcile"
+	"sigs.k8s.io/controller-runtime/pkg/source"
 
 	pagesv1 "github.com/kup6s/pages/pkg/apis/v1alpha1"
 )
@@ -201,7 +206,10 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		}
 	}
 
-	// 10. Update status with resource references
+	// 10. Update Certificate condition (read actual cert-manager status)
+	r.updateCertificateCondition(ctx, site, domain)
+
+	// 11. Update status with resource references
 	site.Status.Phase = pagesv1.PhaseReady
 	site.Status.Message = "Site configured, waiting for sync"
 	if site.Spec.PathPrefix != "" {
@@ -469,6 +477,111 @@ func (r *StaticSiteReconciler) reconcileCertificate(ctx context.Context, site *p
 	return nil
 }
 
+// updateCertificateCondition reads the Certificate status and updates the StaticSite condition
+func (r *StaticSiteReconciler) updateCertificateCondition(ctx context.Context, site *pagesv1.StaticSite, domain string) {
+	logger := log.FromContext(ctx)
+
+	// If no custom domain, no certificate to check
+	if site.Spec.Domain == "" {
+		// Remove condition if it exists (site switched from custom to auto domain)
+		meta.RemoveStatusCondition(&site.Status.Conditions, pagesv1.ConditionCertificateReady)
+		return
+	}
+
+	certName := sanitizeDomainForResourceName(domain) + "-tls"
+
+	cert, err := r.DynamicClient.Resource(certificateGVR).Namespace(r.NginxNamespace).Get(ctx, certName, metav1.GetOptions{})
+	if err != nil {
+		if errors.IsNotFound(err) {
+			meta.SetStatusCondition(&site.Status.Conditions, metav1.Condition{
+				Type:               pagesv1.ConditionCertificateReady,
+				Status:             metav1.ConditionFalse,
+				ObservedGeneration: site.Generation,
+				Reason:             "CertificateNotFound",
+				Message:            fmt.Sprintf("Certificate %s not found", certName),
+			})
+			return
+		}
+		logger.Error(err, "Failed to get Certificate", "name", certName)
+		meta.SetStatusCondition(&site.Status.Conditions, metav1.Condition{
+			Type:               pagesv1.ConditionCertificateReady,
+			Status:             metav1.ConditionUnknown,
+			ObservedGeneration: site.Generation,
+			Reason:             "CertificateFetchError",
+			Message:            err.Error(),
+		})
+		return
+	}
+
+	// Extract conditions from Certificate status
+	status, found, err := unstructured.NestedMap(cert.Object, "status")
+	if err != nil || !found {
+		meta.SetStatusCondition(&site.Status.Conditions, metav1.Condition{
+			Type:               pagesv1.ConditionCertificateReady,
+			Status:             metav1.ConditionUnknown,
+			ObservedGeneration: site.Generation,
+			Reason:             "StatusNotAvailable",
+			Message:            "Certificate status not available yet",
+		})
+		return
+	}
+
+	conditions, found, err := unstructured.NestedSlice(status, "conditions")
+	if err != nil || !found {
+		meta.SetStatusCondition(&site.Status.Conditions, metav1.Condition{
+			Type:               pagesv1.ConditionCertificateReady,
+			Status:             metav1.ConditionUnknown,
+			ObservedGeneration: site.Generation,
+			Reason:             "ConditionsNotAvailable",
+			Message:            "Certificate conditions not available yet",
+		})
+		return
+	}
+
+	// Find the Ready condition in the Certificate
+	for _, c := range conditions {
+		cond, ok := c.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		condType, _, _ := unstructured.NestedString(cond, "type")
+		if condType != "Ready" {
+			continue
+		}
+
+		condStatus, _, _ := unstructured.NestedString(cond, "status")
+		condReason, _, _ := unstructured.NestedString(cond, "reason")
+		condMessage, _, _ := unstructured.NestedString(cond, "message")
+
+		var status metav1.ConditionStatus
+		switch condStatus {
+		case "True":
+			status = metav1.ConditionTrue
+		case "False":
+			status = metav1.ConditionFalse
+		default:
+			status = metav1.ConditionUnknown
+		}
+
+		meta.SetStatusCondition(&site.Status.Conditions, metav1.Condition{
+			Type:               pagesv1.ConditionCertificateReady,
+			Status:             status,
+			ObservedGeneration: site.Generation,
+			Reason:             condReason,
+			Message:            condMessage,
+		})
+		return
+	}
+
+	// Ready condition not found
+	meta.SetStatusCondition(&site.Status.Conditions, metav1.Condition{
+		Type:               pagesv1.ConditionCertificateReady,
+		Status:             metav1.ConditionUnknown,
+		ObservedGeneration: site.Generation,
+		Reason:             "ReadyConditionNotFound",
+		Message:            "Certificate Ready condition not found",
+	})
+}
 
 // handleDeletion cleans up on deletion
 // Since resources are in the system namespace, we must explicitly delete them
@@ -580,7 +693,62 @@ func (r *StaticSiteReconciler) setError(ctx context.Context, site *pagesv1.Stati
 
 // SetupWithManager registers the controller
 func (r *StaticSiteReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Create an unstructured object for Certificate watching
+	cert := &unstructured.Unstructured{}
+	cert.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "cert-manager.io",
+		Version: "v1",
+		Kind:    "Certificate",
+	})
+
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&pagesv1.StaticSite{}).
+		WatchesRawSource(source.Kind(mgr.GetCache(), cert,
+			handler.TypedEnqueueRequestsFromMapFunc(r.mapCertificateToStaticSites))).
 		Complete(r)
+}
+
+// mapCertificateToStaticSites maps a Certificate to the StaticSite(s) that use it
+func (r *StaticSiteReconciler) mapCertificateToStaticSites(ctx context.Context, cert *unstructured.Unstructured) []reconcile.Request {
+	logger := log.FromContext(ctx)
+
+	// Only process certificates in our namespace with our label
+	if cert.GetNamespace() != r.NginxNamespace {
+		return nil
+	}
+
+	labels := cert.GetLabels()
+	if labels == nil || labels["pages.kup6s.com/managed"] != "true" {
+		return nil
+	}
+
+	domain := labels["pages.kup6s.com/domain"]
+	if domain == "" {
+		return nil
+	}
+
+	// Find all StaticSites using this domain
+	siteList := &pagesv1.StaticSiteList{}
+	if err := r.List(ctx, siteList); err != nil {
+		logger.Error(err, "Failed to list StaticSites")
+		return nil
+	}
+
+	var requests []reconcile.Request
+	for _, site := range siteList.Items {
+		if site.Spec.Domain == domain {
+			requests = append(requests, reconcile.Request{
+				NamespacedName: types.NamespacedName{
+					Name:      site.Name,
+					Namespace: site.Namespace,
+				},
+			})
+		}
+	}
+
+	if len(requests) > 0 {
+		logger.V(1).Info("Certificate changed, requeueing StaticSites", "domain", domain, "count", len(requests))
+	}
+
+	return requests
 }
