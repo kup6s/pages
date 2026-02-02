@@ -6,6 +6,8 @@ templates:
   - templates/clusterrole-syncer.yaml
   - templates/clusterrolebinding-operator.yaml
   - templates/clusterrolebinding-syncer.yaml
+  - templates/role-operator.yaml
+  - templates/rolebinding-operator.yaml
 tests:
   - it: should create operator serviceaccount
     template: templates/serviceaccount-operator.yaml
@@ -61,6 +63,92 @@ tests:
     template: templates/serviceaccount-operator.yaml
     set:
       operator.serviceAccount.create: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # Namespace-scoped Role tests
+  - it: should create operator role for namespace-scoped resources
+    template: templates/role-operator.yaml
+    asserts:
+      - isKind:
+          of: Role
+      - matchRegex:
+          path: metadata.name
+          pattern: -operator$
+
+  - it: should grant traefik ingressroute permissions in role
+    template: templates/role-operator.yaml
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["traefik.io"]
+            resources: ["ingressroutes", "middlewares"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  - it: should grant cert-manager certificate permissions in role
+    template: templates/role-operator.yaml
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["cert-manager.io"]
+            resources: ["certificates"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  - it: should grant coordination lease permissions in role
+    template: templates/role-operator.yaml
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["coordination.k8s.io"]
+            resources: ["leases"]
+            verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  - it: should not create role when rbac disabled
+    template: templates/role-operator.yaml
+    set:
+      rbac.create: false
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  # Namespace-scoped RoleBinding tests
+  - it: should create operator rolebinding
+    template: templates/rolebinding-operator.yaml
+    asserts:
+      - isKind:
+          of: RoleBinding
+      - matchRegex:
+          path: metadata.name
+          pattern: -operator$
+
+  - it: should reference correct role in rolebinding
+    template: templates/rolebinding-operator.yaml
+    asserts:
+      - equal:
+          path: roleRef.kind
+          value: Role
+      - matchRegex:
+          path: roleRef.name
+          pattern: -operator$
+
+  - it: should reference correct serviceaccount in rolebinding
+    template: templates/rolebinding-operator.yaml
+    asserts:
+      - equal:
+          path: subjects[0].kind
+          value: ServiceAccount
+      - matchRegex:
+          path: subjects[0].name
+          pattern: -operator$
+
+  - it: should not create rolebinding when rbac disabled
+    template: templates/rolebinding-operator.yaml
+    set:
+      rbac.create: false
     asserts:
       - hasDocuments:
           count: 0
