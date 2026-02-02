@@ -49,8 +49,11 @@ func main() {
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
 
+	// Get kubeconfig once and reuse
+	config := ctrl.GetConfigOrDie()
+
 	// Create manager
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
+	mgr, err := ctrl.NewManager(config, ctrl.Options{
 		Scheme:                 scheme,
 		Metrics:                metricsserver.Options{BindAddress: metricsAddr},
 		HealthProbeBindAddress: probeAddr,
@@ -63,7 +66,7 @@ func main() {
 	}
 
 	// Dynamic Client for Traefik/cert-manager CRDs
-	dynamicClient, err := dynamic.NewForConfig(ctrl.GetConfigOrDie())
+	dynamicClient, err := dynamic.NewForConfig(config)
 	if err != nil {
 		setupLog.Error(err, "unable to create dynamic client")
 		os.Exit(1)
