@@ -53,5 +53,6 @@ helm install pages oci://ghcr.io/kup6s/kup6s-pages
 # Issues/ Commits
 
 - Do not and NEVER mention AI/Claude.
+- Work TDD
 - Always run `make lint` before committing.
 - Always pull main firscreate a branch with worktree under `./.worktrees` in the project and PR if ready.
