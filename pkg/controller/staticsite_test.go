@@ -238,22 +238,22 @@ func TestReconcile_Deletion(t *testing.T) {
 		t.Fatalf("Reconcile() error = %v", err)
 	}
 
-	// Nach Finalizer-Entfernung: keine Requeue nötig
+	// After finalizer removal: no requeue needed
 	if result.RequeueAfter != 0 {
 		t.Error("expected RequeueAfter=0 after deletion handling")
 	}
 
-	// Das Objekt wird nach Finalizer-Entfernung vom API-Server gelöscht
-	// Der Fake-Client simuliert das - daher ist NotFound erwartet
+	// The object is deleted by the API server after finalizer removal
+	// The fake client simulates this - so NotFound is expected
 	updatedSite := &pagesv1.StaticSite{}
 	err = fakeClient.Get(context.Background(), req.NamespacedName, updatedSite)
 	if err == nil {
-		// Wenn es noch existiert, sollte der Finalizer entfernt sein
+		// If it still exists, the finalizer should be removed
 		if len(updatedSite.Finalizers) > 0 {
 			t.Errorf("Finalizers = %v, want empty", updatedSite.Finalizers)
 		}
 	}
-	// NotFound ist auch OK - bedeutet Objekt wurde gelöscht
+	// NotFound is also OK - means object was deleted
 }
 
 func TestDomainGeneration(t *testing.T) {
