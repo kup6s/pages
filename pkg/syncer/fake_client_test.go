@@ -438,6 +438,78 @@ func (f *fakeResourceWithListError) ApplyStatus(ctx context.Context, name string
 	return obj, nil
 }
 
+// fakeDynamicClientWithPatchError returns an error on Patch
+type fakeDynamicClientWithPatchError struct {
+	patchError error
+}
+
+func (f *fakeDynamicClientWithPatchError) Resource(resource schema.GroupVersionResource) dynamic.NamespaceableResourceInterface {
+	return &fakeResourceWithPatchError{client: f}
+}
+
+type fakeResourceWithPatchError struct {
+	client    *fakeDynamicClientWithPatchError
+	namespace string
+}
+
+func (f *fakeResourceWithPatchError) Namespace(ns string) dynamic.ResourceInterface {
+	return &fakeResourceWithPatchError{client: f.client, namespace: ns}
+}
+
+func (f *fakeResourceWithPatchError) List(ctx context.Context, opts metav1.ListOptions) (*unstructured.UnstructuredList, error) {
+	return &unstructured.UnstructuredList{}, nil
+}
+
+func (f *fakeResourceWithPatchError) Get(ctx context.Context, name string, opts metav1.GetOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"name":      name,
+				"namespace": f.namespace,
+			},
+			"spec": map[string]interface{}{
+				"repo": "https://example.com/repo.git",
+			},
+		},
+	}, nil
+}
+
+func (f *fakeResourceWithPatchError) Create(ctx context.Context, obj *unstructured.Unstructured, opts metav1.CreateOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (f *fakeResourceWithPatchError) Update(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (f *fakeResourceWithPatchError) UpdateStatus(ctx context.Context, obj *unstructured.Unstructured, opts metav1.UpdateOptions) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (f *fakeResourceWithPatchError) Delete(ctx context.Context, name string, opts metav1.DeleteOptions, subresources ...string) error {
+	return nil
+}
+
+func (f *fakeResourceWithPatchError) DeleteCollection(ctx context.Context, opts metav1.DeleteOptions, listOpts metav1.ListOptions) error {
+	return nil
+}
+
+func (f *fakeResourceWithPatchError) Watch(ctx context.Context, opts metav1.ListOptions) (watch.Interface, error) {
+	return nil, nil
+}
+
+func (f *fakeResourceWithPatchError) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts metav1.PatchOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return nil, f.client.patchError
+}
+
+func (f *fakeResourceWithPatchError) Apply(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions, subresources ...string) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
+func (f *fakeResourceWithPatchError) ApplyStatus(ctx context.Context, name string, obj *unstructured.Unstructured, opts metav1.ApplyOptions) (*unstructured.Unstructured, error) {
+	return obj, nil
+}
+
 // newFakeClientset creates a fake Kubernetes clientset for testing
 func newFakeClientset(secrets ...*corev1.Secret) kubernetes.Interface {
 	if len(secrets) == 0 {

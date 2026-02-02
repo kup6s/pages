@@ -739,3 +739,21 @@ func TestWebhookEndpointRouting(t *testing.T) {
 		t.Errorf("github webhook: status = %d, want %d", rr.Code, http.StatusOK)
 	}
 }
+
+func TestSyncByRepo_ListError(t *testing.T) {
+	fakeClient := &fakeDynamicClientWithListError{}
+
+	w := &WebhookServer{
+		Syncer: &Syncer{
+			AllowedHosts:  []string{"github.com"},
+			DynamicClient: fakeClient,
+		},
+	}
+
+	ctx := context.Background()
+	err := w.syncByRepo(ctx, "https://github.com/user/repo.git", "main")
+
+	if err == nil {
+		t.Error("syncByRepo() expected error for list failure, got nil")
+	}
+}
