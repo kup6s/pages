@@ -2,6 +2,8 @@ package controller
 
 import (
 	"context"
+	"crypto/rand"
+	"errors"
 	"testing"
 
 	pagesv1 "github.com/kup6s/pages/pkg/apis/v1alpha1"
@@ -685,6 +687,104 @@ func TestReconcile_PathPrefixValidationFails(t *testing.T) {
 
 	// Second Reconcile: validation fails, sets Error status
 	_, err = r.Reconcile(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Reconcile() error = %v, want nil (error in status)", err)
+	}
+
+	updatedSite := &pagesv1.StaticSite{}
+	err = fakeClient.Get(context.Background(), req.NamespacedName, updatedSite)
+	if err != nil {
+		t.Fatalf("failed to get site: %v", err)
+	}
+
+	// Should be in Error phase
+	if updatedSite.Status.Phase != pagesv1.PhaseError {
+		t.Errorf("Phase = %q, want %q", updatedSite.Status.Phase, pagesv1.PhaseError)
+	}
+}
+
+// failingReader always returns an error when Read is called
+type failingReader struct{}
+
+func (f failingReader) Read(p []byte) (n int, err error) {
+	return 0, errors.New("simulated random source failure")
+}
+
+func TestGenerateSecureToken(t *testing.T) {
+	t.Run("success with default rand.Reader", func(t *testing.T) {
+		// Use the default crypto/rand reader
+		randReader = rand.Reader
+		defer func() { randReader = rand.Reader }()
+
+		token, err := generateSecureToken(32)
+		if err != nil {
+			t.Fatalf("generateSecureToken() error = %v, want nil", err)
+		}
+		if len(token) != 32 {
+			t.Errorf("token length = %d, want 32", len(token))
+		}
+	})
+
+	t.Run("error when rand.Reader fails", func(t *testing.T) {
+		// Replace with failing reader
+		randReader = failingReader{}
+		defer func() { randReader = rand.Reader }()
+
+		token, err := generateSecureToken(32)
+		if err == nil {
+			t.Fatal("generateSecureToken() error = nil, want error")
+		}
+		if token != "" {
+			t.Errorf("token = %q, want empty string on error", token)
+		}
+	})
+}
+
+func TestReconcile_TokenGenerationFails(t *testing.T) {
+	// Replace with failing reader for this test
+	randReader = failingReader{}
+	defer func() { randReader = rand.Reader }()
+
+	scheme := runtime.NewScheme()
+	_ = pagesv1.AddToScheme(scheme)
+
+	site := &pagesv1.StaticSite{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:       "token-fail-site",
+			Namespace:  "default",
+			UID:        "test-uid-token-fail",
+			Finalizers: []string{finalizerName},
+		},
+		Spec: pagesv1.StaticSiteSpec{
+			Repo: "https://github.com/example/repo.git",
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithObjects(site).
+		WithStatusSubresource(site).
+		Build()
+
+	r := &StaticSiteReconciler{
+		Client:           fakeClient,
+		DynamicClient:    &fakeDynamicClient{},
+		Recorder:         events.NewFakeRecorder(10),
+		PagesDomain:      "pages.kup6s.com",
+		ClusterIssuer:    "letsencrypt-prod",
+		NginxNamespace:   "kup6s-pages",
+		NginxServiceName: "kup6s-pages-nginx",
+	}
+
+	req := ctrl.Request{
+		NamespacedName: types.NamespacedName{
+			Name:      "token-fail-site",
+			Namespace: "default",
+		},
+	}
+
+	// Reconcile should set error status when token generation fails
+	_, err := r.Reconcile(context.Background(), req)
 	if err != nil {
 		t.Fatalf("Reconcile() error = %v, want nil (error in status)", err)
 	}
