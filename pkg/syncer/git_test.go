@@ -169,6 +169,56 @@ func TestStaticSiteDataFromUnstructured(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "secretRef missing name field",
+			obj: map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"name":      "test-site",
+					"namespace": "pages",
+				},
+				"spec": map[string]interface{}{
+					"repo": "https://github.com/example/repo.git",
+					"secretRef": map[string]interface{}{
+						"key": "token",
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "secretRef name is wrong type",
+			obj: map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"name":      "test-site",
+					"namespace": "pages",
+				},
+				"spec": map[string]interface{}{
+					"repo": "https://github.com/example/repo.git",
+					"secretRef": map[string]interface{}{
+						"name": 123,
+						"key":  "token",
+					},
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "secretRef name is nil",
+			obj: map[string]interface{}{
+				"metadata": map[string]interface{}{
+					"name":      "test-site",
+					"namespace": "pages",
+				},
+				"spec": map[string]interface{}{
+					"repo": "https://github.com/example/repo.git",
+					"secretRef": map[string]interface{}{
+						"name": nil,
+						"key":  "token",
+					},
+				},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -179,6 +229,9 @@ func TestStaticSiteDataFromUnstructured(t *testing.T) {
 
 			if (err != nil) != tt.wantErr {
 				t.Errorf("fromUnstructured() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr {
 				return
 			}
 
