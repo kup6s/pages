@@ -396,9 +396,11 @@ func (s *staticSiteData) fromUnstructured(u *unstructured.Unstructured) error {
 	}
 
 	if secretRefMap, ok := spec["secretRef"].(map[string]interface{}); ok {
-		s.SecretRef = &secretRef{
-			Name: secretRefMap["name"].(string),
+		name, nameOK := secretRefMap["name"].(string)
+		if !nameOK {
+			return fmt.Errorf("secretRef.name is required and must be a string")
 		}
+		s.SecretRef = &secretRef{Name: name}
 		if key, ok := secretRefMap["key"].(string); ok {
 			s.SecretRef.Key = key
 		}
