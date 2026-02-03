@@ -21,6 +21,8 @@ params:
   BookDateFormat: January 2, 2006
   BookSearch: true
   BookComments: false
+  BookLogo: /assets/kup6s-pages-logo-wide.svg
+  description: "Kubernetes Operator for multi-tenant static website hosting"
 
 # Menu configuration
 menu:
