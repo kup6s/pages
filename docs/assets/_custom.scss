@@ -38,3 +38,18 @@
     color: #f8f8f2 !important;
   }
 }
+
+// Logo styling
+.book-brand {
+  img {
+    width: 100%;
+    max-width: 200px;
+    height: auto;
+    margin-right: 0 !important;
+  }
+
+  // Hide the text span since wide logo includes text
+  span {
+    display: none;
+  }
+}

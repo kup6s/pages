@@ -21,6 +21,9 @@ annotations:
   artifacthub.io/operator: "true"
   artifacthub.io/operatorCapabilities: Basic Install
   artifacthub.io/category: integration-delivery
+  artifacthub.io/images: |
+    - name: logo
+      image: https://pages-docs.sites.kup6s.com/assets/kup6s-pages-icon.svg
   artifacthub.io/links: |
     - name: Documentation
       url: https://pages-docs.sites.kup6s.com

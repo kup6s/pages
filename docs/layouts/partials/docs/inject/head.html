@@ -1,0 +1,23 @@
+<!-- Web App Manifest -->
+<link rel="manifest" href="/assets/site.webmanifest">
+
+<!-- Favicon -->
+<link rel="icon" type="image/svg+xml" href="/assets/kup6s-pages-icon.svg">
+
+<!-- Open Graph / Social Media Meta Tags -->
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{ .Permalink }}">
+<meta property="og:title" content="{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }} | {{ .Site.Title }}{{ end }}">
+<meta property="og:description" content="{{ if .Description }}{{ .Description }}{{ else }}{{ .Site.Params.description }}{{ end }}">
+<meta property="og:image" content="{{ .Site.BaseURL }}assets/kup6s-pages-logo-wide.svg">
+
+<!-- Twitter Card Meta Tags -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:url" content="{{ .Permalink }}">
+<meta name="twitter:title" content="{{ if .IsHome }}{{ .Site.Title }}{{ else }}{{ .Title }} | {{ .Site.Title }}{{ end }}">
+<meta name="twitter:description" content="{{ if .Description }}{{ .Description }}{{ else }}{{ .Site.Params.description }}{{ end }}">
+<meta name="twitter:image" content="{{ .Site.BaseURL }}assets/kup6s-pages-logo-wide.svg">
+
+<!-- Theme Color for Mobile Browsers -->
+<meta name="theme-color" content="#1e1e1e" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
