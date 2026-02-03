@@ -18,7 +18,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
-	pagesv1 "github.com/kup6s/pages/pkg/apis/v1alpha1"
+	pagesv1 "github.com/kup6s/pages/pkg/apis/v1beta1"
 	"github.com/kup6s/pages/pkg/controller"
 )
 

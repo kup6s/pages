@@ -1,5 +1,5 @@
-// Package v1alpha1 contains the StaticSite CRD types
-package v1alpha1
+// Package v1beta1 contains the StaticSite CRD types
+package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"

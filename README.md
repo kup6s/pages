@@ -25,7 +25,7 @@ helm install pages oci://ghcr.io/kup6s/kup6s-pages \
 
 # Deploy a site
 kubectl apply -f - <<EOF
-apiVersion: pages.kup6s.com/v1alpha1
+apiVersion: pages.kup6s.com/v1beta1
 kind: StaticSite
 metadata:
   name: my-website

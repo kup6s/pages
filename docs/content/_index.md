@@ -37,7 +37,7 @@ helm install pages oci://ghcr.io/kup6s/kup6s-pages \
 **2. Create a StaticSite**
 
 ```yaml
-apiVersion: pages.kup6s.com/v1alpha1
+apiVersion: pages.kup6s.com/v1beta1
 kind: StaticSite
 metadata:
   name: my-website

@@ -17,7 +17,7 @@ You want to serve archived content or versioned documentation under paths like:
 ## Configuration
 
 ```yaml
-apiVersion: pages.kup6s.com/v1alpha1
+apiVersion: pages.kup6s.com/v1beta1
 kind: StaticSite
 metadata:
   name: archive-2019
@@ -27,7 +27,7 @@ spec:
   domain: www.example.com
   pathPrefix: /2019
 ---
-apiVersion: pages.kup6s.com/v1alpha1
+apiVersion: pages.kup6s.com/v1beta1
 kind: StaticSite
 metadata:
   name: archive-2020
@@ -56,7 +56,7 @@ spec:
 To serve a "main" site at the root while having prefixed sub-sites, create a site without `pathPrefix`:
 
 ```yaml
-apiVersion: pages.kup6s.com/v1alpha1
+apiVersion: pages.kup6s.com/v1beta1
 kind: StaticSite
 metadata:
   name: main-site

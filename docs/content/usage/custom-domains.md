@@ -10,7 +10,7 @@ Each StaticSite can have its own custom domain with automatic TLS certificates.
 ## Basic Custom Domain
 
 ```yaml
-apiVersion: pages.kup6s.com/v1alpha1
+apiVersion: pages.kup6s.com/v1beta1
 kind: StaticSite
 metadata:
   name: company-site
@@ -58,7 +58,7 @@ Common issues:
 Each StaticSite supports one domain. For multiple domains pointing to the same content, create multiple StaticSite resources:
 
 ```yaml
-apiVersion: pages.kup6s.com/v1alpha1
+apiVersion: pages.kup6s.com/v1beta1
 kind: StaticSite
 metadata:
   name: site-www
@@ -67,7 +67,7 @@ spec:
   repo: https://github.com/company/website.git
   domain: www.company.com
 ---
-apiVersion: pages.kup6s.com/v1alpha1
+apiVersion: pages.kup6s.com/v1beta1
 kind: StaticSite
 metadata:
   name: site-apex
