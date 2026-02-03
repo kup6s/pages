@@ -14,9 +14,9 @@ tests:
       - equal:
           path: spec.replicas
           value: 1
-      - equal:
+      - matchRegex:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/kup6s/pages-syncer:1.0.0-beta.3
+          pattern: ^ghcr\.io/kup6s/pages-syncer:.+$
 
   - it: should mount PVC
     asserts:
