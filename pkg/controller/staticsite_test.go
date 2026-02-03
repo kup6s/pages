@@ -6,7 +6,7 @@ import (
 	"errors"
 	"testing"
 
-	pagesv1 "github.com/kup6s/pages/pkg/apis/v1alpha1"
+	pagesv1 "github.com/kup6s/pages/pkg/apis/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"

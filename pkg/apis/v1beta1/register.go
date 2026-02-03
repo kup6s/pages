@@ -1,5 +1,5 @@
-// Package v1alpha1 contains API Schema definitions
-package v1alpha1
+// Package v1beta1 contains API Schema definitions
+package v1beta1
 
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -9,7 +9,7 @@ import (
 
 const (
 	Group   = "pages.kup6s.com"
-	Version = "v1alpha1"
+	Version = "v1beta1"
 )
 
 var (

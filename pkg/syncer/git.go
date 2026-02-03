@@ -99,7 +99,7 @@ func (s *Syncer) validateRepoURL(repoURL string) error {
 
 var staticSiteGVR = schema.GroupVersionResource{
 	Group:    "pages.kup6s.com",
-	Version:  "v1alpha1",
+	Version:  "v1beta1",
 	Resource: "staticsites",
 }
 

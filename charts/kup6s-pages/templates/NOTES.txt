@@ -7,7 +7,7 @@ Get the status of your installation:
 Create a StaticSite:
 
   cat <<EOF | kubectl apply -f -
-  apiVersion: pages.kup6s.com/v1alpha1
+  apiVersion: pages.kup6s.com/v1beta1
   kind: StaticSite
   metadata:
     name: my-website

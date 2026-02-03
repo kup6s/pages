@@ -26,7 +26,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 	"sigs.k8s.io/controller-runtime/pkg/source"
 
-	pagesv1 "github.com/kup6s/pages/pkg/apis/v1alpha1"
+	pagesv1 "github.com/kup6s/pages/pkg/apis/v1beta1"
 )
 
 // randReader is the source of randomness for token generation (injectable for testing)

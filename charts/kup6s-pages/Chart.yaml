@@ -28,7 +28,7 @@ annotations:
       url: https://github.com/kup6s/pages/issues
   artifacthub.io/crds: |
     - kind: StaticSite
-      version: v1alpha1
+      version: v1beta1
       name: staticsites.pages.kup6s.com
       displayName: Static Site
       description: Defines a static website to be hosted on the cluster

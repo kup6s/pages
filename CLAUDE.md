@@ -41,7 +41,7 @@ helm install pages oci://ghcr.io/kup6s/kup6s-pages
 
 ## Key APIs
 
-- CRD: `staticsites.pages.kup6s.com/v1alpha1`
+- CRD: `staticsites.pages.kup6s.com/v1beta1`
 - Namespace: `kup6s-pages`
 - Service: `static-sites-nginx` (HTTP), `pages-syncer` (webhooks)
 

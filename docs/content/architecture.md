@@ -167,7 +167,7 @@ HTTPS Request: www.customer.com/about.html
 ┌──────────────┐     ┌─────────────────────────────────────┐
 │   Syncer     │     │  Kubernetes API                     │
 │              │     │                                     │
-│  Timer: 5m   │────▶│  GET /apis/pages.kup6s.com/v1alpha1/ │
+│  Timer: 5m   │────▶│  GET /apis/pages.kup6s.com/v1beta1/ │
 │              │     │      staticsites                    │
 └──────┬───────┘     └─────────────────────────────────────┘
        │

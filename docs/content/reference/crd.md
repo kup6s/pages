@@ -7,7 +7,7 @@ weight: 10
 
 The `StaticSite` Custom Resource Definition is the primary API for deploying static websites.
 
-**API Version:** `pages.kup6s.com/v1alpha1`
+**API Version:** `pages.kup6s.com/v1beta1`
 **Kind:** `StaticSite`
 
 ## Spec Fields
@@ -53,7 +53,7 @@ The status includes standard Kubernetes conditions:
 ## Example
 
 ```yaml
-apiVersion: pages.kup6s.com/v1alpha1
+apiVersion: pages.kup6s.com/v1beta1
 kind: StaticSite
 metadata:
   name: my-website
