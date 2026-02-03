@@ -15,7 +15,7 @@ keywords:
   - traefik
 maintainers:
   - name: Klein & Partner KG
-    url: https://kup6s.com
+    url: https://kleinundpartner.at
 annotations:
   artifacthub.io/license: EUPL-1.2
   artifacthub.io/operator: "true"
