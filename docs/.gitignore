@@ -1,0 +1,6 @@
+# Hugo build output
+public/
+resources/
+
+# Generated at build time
+data/build.yaml
