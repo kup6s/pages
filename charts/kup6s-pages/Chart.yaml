@@ -16,3 +16,19 @@ keywords:
 maintainers:
   - name: kup6s
     url: https://kup6s.com
+annotations:
+  artifacthub.io/license: EUPL-1.2
+  artifacthub.io/operator: "true"
+  artifacthub.io/operatorCapabilities: Basic Install
+  artifacthub.io/category: integration-delivery
+  artifacthub.io/links: |
+    - name: Documentation
+      url: https://pages-docs.sites.kup6s.com
+    - name: Support
+      url: https://github.com/kup6s/pages/issues
+  artifacthub.io/crds: |
+    - kind: StaticSite
+      version: v1alpha1
+      name: staticsites.pages.kup6s.com
+      displayName: Static Site
+      description: Defines a static website to be hosted on the cluster
