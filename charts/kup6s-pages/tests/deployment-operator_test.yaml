@@ -11,7 +11,7 @@ tests:
           value: 1
       - equal:
           path: spec.template.spec.containers[0].image
-          value: ghcr.io/kup6s/pages-operator:0.1.0
+          value: ghcr.io/kup6s/pages-operator:1.0.0-beta.2
 
   - it: should use custom image tag
     set:
