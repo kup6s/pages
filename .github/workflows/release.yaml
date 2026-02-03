@@ -69,10 +69,13 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     permissions:
-      contents: read
+      contents: write
       packages: write
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get version from tag
         id: version
@@ -99,3 +102,11 @@ jobs:
         run: |
           helm package charts/kup6s-pages
           helm push kup6s-pages-${{ steps.version.outputs.version }}.tgz oci://ghcr.io/${{ github.repository_owner }}
+
+      - name: Commit version update to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add charts/kup6s-pages/Chart.yaml
+          git commit -m "chore: bump Chart.yaml to ${{ steps.version.outputs.version }} [skip ci]"
+          git push origin main
