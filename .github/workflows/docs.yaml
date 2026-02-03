@@ -5,7 +5,9 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
+      - 'charts/kup6s-pages/Chart.yaml'
       - '.github/workflows/docs.yaml'
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
@@ -20,6 +22,16 @@ jobs:
         with:
           hugo-version: 'latest'
           extended: true
+
+      - name: Generate build info
+        run: |
+          VERSION=$(grep '^version:' charts/kup6s-pages/Chart.yaml | awk '{print $2}')
+          BUILD_DATE=$(date -u +'%Y-%m-%d')
+          mkdir -p docs/data
+          cat > docs/data/build.yaml << EOF
+          version: "${VERSION}"
+          date: "${BUILD_DATE}"
+          EOF
 
       - name: Build docs
         run: hugo --source docs --minify
