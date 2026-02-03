@@ -37,7 +37,7 @@ jobs:
       - name: Run lint
         run: make lint
 
-  helm-test:
+  helm-qa:
     runs-on: ubuntu-latest
     env:
       HELM_PLUGINS: ${{ github.workspace }}/.helm/plugins
