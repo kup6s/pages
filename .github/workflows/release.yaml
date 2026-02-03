@@ -69,6 +69,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: test
     permissions:
+      actions: write
       contents: write
       packages: write
     steps:
@@ -110,3 +111,8 @@ jobs:
           git add charts/kup6s-pages/Chart.yaml
           git commit -m "chore: bump Chart.yaml to ${{ steps.version.outputs.version }} [skip ci]"
           git push origin main
+
+      - name: Trigger docs rebuild
+        run: gh workflow run docs.yaml
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
