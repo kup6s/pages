@@ -10,7 +10,7 @@ metadata:
 # All generated resources are created in the system namespace only.
 # This limits the blast radius - a compromised operator can only affect
 # resources in this namespace, not user namespaces.
-# See https://pages-docs.sites.kup6s.com/security/ for detailed RBAC documentation.
+# See https://pages-docs.kup6s.com/security/ for detailed RBAC documentation.
 rules:
   # Traefik IngressRoutes and Middlewares
   # Created in system namespace with labels for tracking.
