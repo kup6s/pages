@@ -41,23 +41,25 @@ kubectl get staticsites -n pages
 
 ## Documentation
 
-Full documentation: https://pages-docs.sites.kup6s.com
+Full documentation: https://pages-docs.kup6s.com
 
-- [Installation](https://pages-docs.sites.kup6s.com/installation/)
-- [Usage Guide](https://pages-docs.sites.kup6s.com/usage/)
-- [Reference](https://pages-docs.sites.kup6s.com/reference/)
-- [Troubleshooting](https://pages-docs.sites.kup6s.com/troubleshooting/)
+- [Installation](https://pages-docs.kup6s.com/installation/)
+- [Usage Guide](https://pages-docs.kup6s.com/usage/)
+- [Reference](https://pages-docs.kup6s.com/reference/)
+- [Troubleshooting](https://pages-docs.kup6s.com/troubleshooting/)
 
 ## Development
 
 ```bash
 make build      # Build binaries
-make test       # Run tests
-make lint       # Run linter
+make test       # Run tests (go)
+make lint       # Run linter (go)
+make helm-test  # Run tests (helm)
+make helm-lint  # Run linter (helm)
 make docs-serve # Preview documentation
 ```
 
-See [Development Guide](https://pages-docs.sites.kup6s.com/development/) for details.
+See [Development Guide](https://pages-docs.kup6s.com/development/) for details.
 
 ## License
 
