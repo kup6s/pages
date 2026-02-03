@@ -182,12 +182,12 @@ Key settings:
 
 ## Documentation
 
-Full documentation: https://pages-docs.sites.kup6s.com
+Full documentation: https://pages-docs.kup6s.com
 
-- [Installation Guide](https://pages-docs.sites.kup6s.com/installation/)
-- [Usage Guide](https://pages-docs.sites.kup6s.com/usage/)
-- [Configuration Reference](https://pages-docs.sites.kup6s.com/reference/)
-- [Troubleshooting](https://pages-docs.sites.kup6s.com/troubleshooting/)
+- [Installation Guide](https://pages-docs.kup6s.com/installation/)
+- [Usage Guide](https://pages-docs.kup6s.com/usage/)
+- [Configuration Reference](https://pages-docs.kup6s.com/reference/)
+- [Troubleshooting](https://pages-docs.kup6s.com/troubleshooting/)
 
 ## Support
 
