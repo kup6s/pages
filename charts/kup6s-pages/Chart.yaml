@@ -40,3 +40,20 @@ annotations:
       name: staticsites.pages.kup6s.com
       displayName: Static Site
       description: Defines a static website to be hosted on the cluster
+  artifacthub.io/crdsExamples: |
+    - apiVersion: pages.kup6s.com/v1beta1
+      kind: StaticSite
+      metadata:
+        name: my-docs
+      spec:
+        repo: https://github.com/example/docs.git
+        branch: main
+        path: /public
+    - apiVersion: pages.kup6s.com/v1beta1
+      kind: StaticSite
+      metadata:
+        name: company-site
+      spec:
+        repo: https://github.com/example/website.git
+        domain: www.example.com
+        syncInterval: 10m
