@@ -10,6 +10,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/plumbing"
+	"github.com/go-git/go-git/v5/plumbing/object"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -907,7 +910,7 @@ func TestSyncSite_PullFailure(t *testing.T) {
 		t.Error("expected error for pull failure, got nil")
 	}
 	// The error could be "failed to open repo" since it's not a real git repo
-	if !strings.Contains(err.Error(), "failed to open repo") && !strings.Contains(err.Error(), "git pull failed") {
+	if !strings.Contains(err.Error(), "failed to open repo") && !strings.Contains(err.Error(), "git fetch failed") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -958,7 +961,7 @@ func TestSyncSite_SubpathNotExist(t *testing.T) {
 		t.Error("expected error for nonexistent subpath, got nil")
 	}
 	// Either we get a subpath error or a pull error (since fake repo can't pull)
-	if !strings.Contains(err.Error(), "subpath") && !strings.Contains(err.Error(), "git pull failed") {
+	if !strings.Contains(err.Error(), "subpath") && !strings.Contains(err.Error(), "git fetch failed") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -1317,7 +1320,7 @@ func TestSyncSite_CorruptedRepo(t *testing.T) {
 		t.Error("expected error for corrupted repo, got nil")
 	}
 	// The error should be git pull related since the repo has no valid remote
-	if !strings.Contains(err.Error(), "git pull failed") {
+	if !strings.Contains(err.Error(), "git fetch failed") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -1340,6 +1343,166 @@ func TestCleanup_ReadDirError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "failed to read sites directory") {
 		t.Errorf("unexpected error message: %v", err)
+	}
+}
+
+func TestSyncSite_NonFastForwardUpdate(t *testing.T) {
+	// This test simulates a force-pushed branch scenario:
+	// 1. Create a local git repo (simulating remote)
+	// 2. Clone it to sites directory
+	// 3. Make a new divergent commit in the "remote" (simulate force push)
+	// 4. Syncer should successfully sync to the new commit
+
+	tmpDir, err := os.MkdirTemp("", "syncer-nff-test-*")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	// Create the "remote" repo
+	remoteDir := filepath.Join(tmpDir, "remote")
+	if err := os.MkdirAll(remoteDir, 0755); err != nil {
+		t.Fatalf("failed to create remote dir: %v", err)
+	}
+
+	// Initialize a git repo with an initial commit
+	remoteRepo, err := git.PlainInit(remoteDir, false)
+	if err != nil {
+		t.Fatalf("failed to init remote repo: %v", err)
+	}
+
+	// Create initial file
+	indexPath := filepath.Join(remoteDir, "index.html")
+	if err := os.WriteFile(indexPath, []byte("<h1>Version 1</h1>"), 0644); err != nil {
+		t.Fatalf("failed to create index.html: %v", err)
+	}
+
+	// Stage and commit
+	remoteWorktree, err := remoteRepo.Worktree()
+	if err != nil {
+		t.Fatalf("failed to get remote worktree: %v", err)
+	}
+	if _, err := remoteWorktree.Add("index.html"); err != nil {
+		t.Fatalf("failed to add file: %v", err)
+	}
+	commit1, err := remoteWorktree.Commit("Initial commit", &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "Test",
+			Email: "test@example.com",
+			When:  time.Now(),
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create initial commit: %v", err)
+	}
+
+	// Create syncer sites directory
+	sitesDir := filepath.Join(tmpDir, "sites")
+	if err := os.MkdirAll(sitesDir, 0755); err != nil {
+		t.Fatalf("failed to create sites dir: %v", err)
+	}
+
+	// Clone to sites directory (simulating initial sync)
+	siteDir := filepath.Join(sitesDir, "test-site")
+	cloneOpts := &git.CloneOptions{
+		URL:           remoteDir,
+		ReferenceName: plumbing.Master,
+		SingleBranch:  true,
+		Depth:         1,
+	}
+	clonedRepo, err := git.PlainClone(siteDir, false, cloneOpts)
+	if err != nil {
+		t.Fatalf("failed to clone repo: %v", err)
+	}
+
+	// Verify we're at commit1
+	head, err := clonedRepo.Head()
+	if err != nil {
+		t.Fatalf("failed to get HEAD: %v", err)
+	}
+	if head.Hash() != commit1 {
+		t.Fatalf("expected HEAD to be %s, got %s", commit1, head.Hash())
+	}
+
+	// Now simulate a force push: reset the remote and create a divergent commit
+	// First reset to commit1, then make a different change
+	if err := remoteWorktree.Reset(&git.ResetOptions{
+		Mode:   git.HardReset,
+		Commit: commit1,
+	}); err != nil {
+		t.Fatalf("failed to reset: %v", err)
+	}
+
+	// Make a different change that creates a new history
+	if err := os.WriteFile(indexPath, []byte("<h1>Version 2 - Rebased</h1>"), 0644); err != nil {
+		t.Fatalf("failed to update index.html: %v", err)
+	}
+	if _, err := remoteWorktree.Add("index.html"); err != nil {
+		t.Fatalf("failed to add rebased file: %v", err)
+	}
+	commit2, err := remoteWorktree.Commit("Rebased commit", &git.CommitOptions{
+		Author: &object.Signature{
+			Name:  "Test",
+			Email: "test@example.com",
+			When:  time.Now().Add(time.Second), // Different timestamp for different hash
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create rebased commit: %v", err)
+	}
+
+	// Verify commit2 is different from commit1
+	if commit1 == commit2 {
+		t.Fatal("commit1 and commit2 should be different")
+	}
+
+	// Now try to sync using the syncer's pull logic
+	// This is where the current implementation fails with "non-fast-forward update"
+	s := &Syncer{
+		SitesRoot:     sitesDir,
+		AllowedHosts:  []string{"example.com"}, // Not used for local path
+		DynamicClient: &fakeDynamicClient{activeSites: []string{"test-site"}},
+		ClientSet:     newFakeClientset(),
+	}
+
+	site := &staticSiteData{
+		Name:      "test-site",
+		Namespace: "default",
+		Repo:      remoteDir, // Local path works with go-git
+		Branch:    "master",
+		Path:      "/",
+	}
+
+	ctx := context.Background()
+
+	// Call pullRepo directly - we need to test the pull logic
+	_, err = s.pullRepo(ctx, siteDir, site, nil)
+
+	// Current implementation fails here with "non-fast-forward update"
+	if err != nil {
+		t.Errorf("pullRepo failed on non-fast-forward update: %v", err)
+	}
+
+	// Verify we're now at commit2
+	clonedRepo, err = git.PlainOpen(siteDir)
+	if err != nil {
+		t.Fatalf("failed to reopen repo: %v", err)
+	}
+	head, err = clonedRepo.Head()
+	if err != nil {
+		t.Fatalf("failed to get HEAD after sync: %v", err)
+	}
+	if head.Hash() != commit2 {
+		t.Errorf("expected HEAD to be %s (rebased commit), got %s", commit2, head.Hash())
+	}
+
+	// Verify file content
+	content, err := os.ReadFile(filepath.Join(siteDir, "index.html"))
+	if err != nil {
+		t.Fatalf("failed to read index.html: %v", err)
+	}
+	if string(content) != "<h1>Version 2 - Rebased</h1>" {
+		t.Errorf("unexpected content: %s", content)
 	}
 }
 
@@ -1404,7 +1567,7 @@ func TestSyncSite_PullWithAuth(t *testing.T) {
 		t.Error("expected pull error, got nil")
 	}
 	// The error should be git pull related
-	if !strings.Contains(err.Error(), "git pull failed") {
+	if !strings.Contains(err.Error(), "git fetch failed") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
