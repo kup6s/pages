@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/go-git/go-git/v5"
+	"github.com/go-git/go-git/v5/config"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -219,41 +220,14 @@ func (s *Syncer) syncSite(ctx context.Context, site *staticSiteData) error {
 			commitHash = head.Hash().String()[:8]
 		}
 	} else {
-		// Pull
+		// Pull (using fetch + reset to handle force-pushed branches)
 		logger.Info("Pulling repository", "repo", site.Repo, "dest", destDir)
-		
-		repo, err := git.PlainOpen(destDir)
+
+		hash, err := s.pullRepo(ctx, destDir, site, auth)
 		if err != nil {
-			return fmt.Errorf("failed to open repo: %w", err)
+			return err
 		}
-
-		worktree, err := repo.Worktree()
-		if err != nil {
-			return fmt.Errorf("failed to get worktree: %w", err)
-		}
-
-		pullOpts := &git.PullOptions{
-			ReferenceName: plumbing.NewBranchReferenceName(site.Branch),
-			SingleBranch:  true,
-			Depth:         1,
-			Force:         true,
-		}
-		if auth != nil {
-			pullOpts.Auth = auth
-		}
-
-		err = worktree.Pull(pullOpts)
-		if err != nil && err != git.NoErrAlreadyUpToDate {
-			return fmt.Errorf("git pull failed: %w", err)
-		}
-
-		head, err := repo.Head()
-		if err != nil {
-			logger.V(1).Info("Failed to get HEAD after pull", "error", err)
-		}
-		if head != nil {
-			commitHash = head.Hash().String()[:8]
-		}
+		commitHash = hash
 	}
 
 	// If a subpath is defined, create symlink
@@ -269,6 +243,54 @@ func (s *Syncer) syncSite(ctx context.Context, site *staticSiteData) error {
 	
 	logger.Info("Sync complete", "site", site.Name, "commit", commitHash)
 	return nil
+}
+
+// pullRepo fetches and resets to the latest remote commit.
+// This handles non-fast-forward updates (force-pushed branches) by using
+// fetch + hard reset instead of pull, which fails on divergent histories.
+func (s *Syncer) pullRepo(ctx context.Context, destDir string, site *staticSiteData, auth *http.BasicAuth) (string, error) {
+	repo, err := git.PlainOpen(destDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to open repo: %w", err)
+	}
+
+	// Fetch the remote branch
+	fetchOpts := &git.FetchOptions{
+		RemoteName: "origin",
+		RefSpecs:   []config.RefSpec{config.RefSpec("+refs/heads/" + site.Branch + ":refs/remotes/origin/" + site.Branch)},
+		Depth:      1,
+		Force:      true,
+	}
+	if auth != nil {
+		fetchOpts.Auth = auth
+	}
+
+	err = repo.Fetch(fetchOpts)
+	if err != nil && err != git.NoErrAlreadyUpToDate {
+		return "", fmt.Errorf("git fetch failed: %w", err)
+	}
+
+	// Get the fetched commit hash
+	remoteRef, err := repo.Reference(plumbing.NewRemoteReferenceName("origin", site.Branch), true)
+	if err != nil {
+		return "", fmt.Errorf("failed to get remote reference: %w", err)
+	}
+
+	// Hard reset worktree to the fetched commit
+	worktree, err := repo.Worktree()
+	if err != nil {
+		return "", fmt.Errorf("failed to get worktree: %w", err)
+	}
+
+	err = worktree.Reset(&git.ResetOptions{
+		Commit: remoteRef.Hash(),
+		Mode:   git.HardReset,
+	})
+	if err != nil {
+		return "", fmt.Errorf("git reset failed: %w", err)
+	}
+
+	return remoteRef.Hash().String()[:8], nil
 }
 
 // setupSubpath creates a symlink for subpaths
