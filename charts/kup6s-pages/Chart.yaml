@@ -28,7 +28,7 @@ annotations:
     - name: syncer
       image: ghcr.io/kup6s/pages-syncer
     - name: nginx
-      image: docker.io/library/nginx:1.27-alpine
+      image: docker.io/library/nginx:1.29-alpine
   artifacthub.io/links: |
     - name: Documentation
       url: https://pages-docs.kup6s.com
