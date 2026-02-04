@@ -2,8 +2,8 @@ apiVersion: v2
 name: kup6s-pages
 description: Kubernetes Operator for multi-tenant static website hosting
 type: application
-version: 1.0.0-beta.5
-appVersion: "1.0.0-beta.5"
+version: 1.0.0-beta.6
+appVersion: "1.0.0-beta.6"
 home: https://github.com/kup6s/pages
 sources:
   - https://github.com/kup6s/pages
