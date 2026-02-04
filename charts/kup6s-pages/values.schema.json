@@ -1,0 +1,465 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "nameOverride": {
+      "type": "string",
+      "description": "Override the chart name"
+    },
+    "fullnameOverride": {
+      "type": "string",
+      "description": "Override the full release name"
+    },
+    "createNamespace": {
+      "type": "boolean",
+      "description": "Create namespace (set to false if namespace is managed externally)",
+      "default": true
+    },
+    "namespace": {
+      "type": "string",
+      "description": "Target namespace for deployment",
+      "default": "kup6s-pages"
+    },
+    "imagePullSecrets": {
+      "type": "array",
+      "description": "Global image pull secrets",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" }
+        }
+      }
+    },
+    "crds": {
+      "type": "object",
+      "description": "CRD configuration",
+      "properties": {
+        "install": {
+          "type": "boolean",
+          "description": "Install CRD with the chart",
+          "default": false
+        },
+        "keep": {
+          "type": "boolean",
+          "description": "Keep CRD when chart is uninstalled",
+          "default": true
+        }
+      }
+    },
+    "operator": {
+      "type": "object",
+      "description": "Operator configuration",
+      "properties": {
+        "replicas": {
+          "type": "integer",
+          "description": "Number of operator replicas",
+          "default": 1,
+          "minimum": 1
+        },
+        "image": {
+          "type": "object",
+          "properties": {
+            "registry": {
+              "type": "string",
+              "description": "Image registry",
+              "default": "ghcr.io"
+            },
+            "repository": {
+              "type": "string",
+              "description": "Image repository",
+              "default": "kup6s/pages-operator"
+            },
+            "tag": {
+              "type": "string",
+              "description": "Image tag (defaults to Chart.appVersion)"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "description": "Image pull policy",
+              "enum": ["Always", "IfNotPresent", "Never"],
+              "default": "IfNotPresent"
+            }
+          }
+        },
+        "pagesDomain": {
+          "type": "string",
+          "description": "Pages domain for auto-generated site URLs",
+          "default": "pages.kup6s.com"
+        },
+        "clusterIssuer": {
+          "type": "string",
+          "description": "cert-manager ClusterIssuer name for TLS certificates",
+          "default": "letsencrypt-prod"
+        },
+        "pagesTlsMode": {
+          "type": "string",
+          "description": "TLS mode: 'individual' (per-site certs) or 'wildcard' (pre-existing wildcard)",
+          "enum": ["individual", "wildcard"],
+          "default": "individual"
+        },
+        "pagesWildcardSecret": {
+          "type": "string",
+          "description": "Secret name for wildcard certificate (only used when pagesTlsMode=wildcard)",
+          "default": "pages-wildcard-tls"
+        },
+        "metricsBindAddress": {
+          "type": "string",
+          "description": "Metrics bind address",
+          "default": ":8080"
+        },
+        "healthProbeBindAddress": {
+          "type": "string",
+          "description": "Health probe bind address",
+          "default": ":8081"
+        },
+        "extraArgs": {
+          "type": "array",
+          "description": "Additional CLI arguments",
+          "items": { "type": "string" }
+        },
+        "podAnnotations": {
+          "type": "object",
+          "description": "Pod annotations",
+          "additionalProperties": { "type": "string" }
+        },
+        "podLabels": {
+          "type": "object",
+          "description": "Pod labels",
+          "additionalProperties": { "type": "string" }
+        },
+        "podSecurityContext": {
+          "type": "object",
+          "description": "Pod security context"
+        },
+        "securityContext": {
+          "type": "object",
+          "description": "Container security context"
+        },
+        "resources": {
+          "type": "object",
+          "description": "Resource requests and limits",
+          "properties": {
+            "limits": { "type": "object" },
+            "requests": { "type": "object" }
+          }
+        },
+        "nodeSelector": {
+          "type": "object",
+          "description": "Node selector",
+          "additionalProperties": { "type": "string" }
+        },
+        "tolerations": {
+          "type": "array",
+          "description": "Tolerations",
+          "items": { "type": "object" }
+        },
+        "affinity": {
+          "type": "object",
+          "description": "Affinity rules"
+        },
+        "livenessProbe": {
+          "type": "object",
+          "description": "Liveness probe configuration"
+        },
+        "readinessProbe": {
+          "type": "object",
+          "description": "Readiness probe configuration"
+        },
+        "serviceAccount": {
+          "type": "object",
+          "properties": {
+            "create": {
+              "type": "boolean",
+              "description": "Create service account",
+              "default": true
+            },
+            "name": {
+              "type": "string",
+              "description": "Service account name"
+            },
+            "annotations": {
+              "type": "object",
+              "description": "Service account annotations",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "syncer": {
+      "type": "object",
+      "description": "Syncer configuration",
+      "properties": {
+        "replicas": {
+          "type": "integer",
+          "description": "Number of syncer replicas",
+          "default": 1,
+          "minimum": 1
+        },
+        "image": {
+          "type": "object",
+          "properties": {
+            "registry": {
+              "type": "string",
+              "default": "ghcr.io"
+            },
+            "repository": {
+              "type": "string",
+              "default": "kup6s/pages-syncer"
+            },
+            "tag": { "type": "string" },
+            "pullPolicy": {
+              "type": "string",
+              "enum": ["Always", "IfNotPresent", "Never"],
+              "default": "IfNotPresent"
+            }
+          }
+        },
+        "syncInterval": {
+          "type": "string",
+          "description": "Default sync interval for git repositories",
+          "default": "5m"
+        },
+        "webhookAddr": {
+          "type": "string",
+          "description": "Webhook server listen address",
+          "default": ":8080"
+        },
+        "sitesRoot": {
+          "type": "string",
+          "description": "Sites root directory",
+          "default": "/sites"
+        },
+        "allowedHosts": {
+          "type": "array",
+          "description": "REQUIRED: Allowed Git hosts for SSRF protection",
+          "items": { "type": "string" },
+          "examples": [["github.com", "gitlab.com"]]
+        },
+        "extraArgs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "podAnnotations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "podLabels": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "podSecurityContext": { "type": "object" },
+        "securityContext": { "type": "object" },
+        "resources": {
+          "type": "object",
+          "properties": {
+            "limits": { "type": "object" },
+            "requests": { "type": "object" }
+          }
+        },
+        "nodeSelector": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "tolerations": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "affinity": { "type": "object" },
+        "serviceAccount": {
+          "type": "object",
+          "properties": {
+            "create": { "type": "boolean", "default": true },
+            "name": { "type": "string" },
+            "annotations": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        },
+        "service": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["ClusterIP", "NodePort", "LoadBalancer"],
+              "default": "ClusterIP"
+            },
+            "port": {
+              "type": "integer",
+              "default": 80
+            },
+            "annotations": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "nginx": {
+      "type": "object",
+      "description": "nginx configuration",
+      "properties": {
+        "replicas": {
+          "type": "integer",
+          "description": "Number of nginx replicas for HA",
+          "default": 2,
+          "minimum": 1
+        },
+        "image": {
+          "type": "object",
+          "properties": {
+            "registry": { "type": "string", "default": "docker.io" },
+            "repository": { "type": "string", "default": "library/nginx" },
+            "tag": { "type": "string", "default": "1.25-alpine" },
+            "pullPolicy": {
+              "type": "string",
+              "enum": ["Always", "IfNotPresent", "Never"],
+              "default": "IfNotPresent"
+            }
+          }
+        },
+        "podAnnotations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "podLabels": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "podSecurityContext": { "type": "object" },
+        "securityContext": { "type": "object" },
+        "resources": {
+          "type": "object",
+          "properties": {
+            "limits": { "type": "object" },
+            "requests": { "type": "object" }
+          }
+        },
+        "nodeSelector": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "tolerations": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "affinity": { "type": "object" },
+        "livenessProbe": { "type": "object" },
+        "readinessProbe": { "type": "object" },
+        "service": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["ClusterIP", "NodePort", "LoadBalancer"],
+              "default": "ClusterIP"
+            },
+            "port": { "type": "integer", "default": 80 },
+            "annotations": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            }
+          }
+        },
+        "customConfig": {
+          "type": "string",
+          "description": "Custom nginx configuration (overrides default.conf)"
+        },
+        "pdb": {
+          "type": "object",
+          "description": "PodDisruptionBudget configuration",
+          "properties": {
+            "enabled": { "type": "boolean", "default": true },
+            "minAvailable": { "type": "integer", "default": 1 }
+          }
+        }
+      }
+    },
+    "storage": {
+      "type": "object",
+      "description": "Storage configuration",
+      "properties": {
+        "existingClaim": {
+          "type": "string",
+          "description": "Use existing PVC instead of creating one"
+        },
+        "storageClassName": {
+          "type": "string",
+          "description": "Storage class name (empty uses cluster default)"
+        },
+        "size": {
+          "type": "string",
+          "description": "Storage size",
+          "default": "10Gi"
+        },
+        "accessModes": {
+          "type": "array",
+          "description": "Access modes",
+          "items": {
+            "type": "string",
+            "enum": ["ReadWriteOnce", "ReadOnlyMany", "ReadWriteMany"]
+          },
+          "default": ["ReadWriteMany"]
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "webhook": {
+      "type": "object",
+      "description": "Webhook ingress configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable webhook IngressRoute and Certificate",
+          "default": false
+        },
+        "domain": {
+          "type": "string",
+          "description": "Webhook domain"
+        },
+        "clusterIssuer": {
+          "type": "string",
+          "description": "ClusterIssuer for webhook TLS (defaults to operator.clusterIssuer)"
+        },
+        "entryPoints": {
+          "type": "array",
+          "description": "Traefik entrypoints",
+          "items": { "type": "string" },
+          "default": ["websecure"]
+        },
+        "annotations": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "secret": {
+          "type": "string",
+          "description": "Webhook secret for HMAC validation"
+        },
+        "secretRef": {
+          "type": "object",
+          "description": "Reference to existing secret",
+          "properties": {
+            "name": { "type": "string" },
+            "key": { "type": "string", "default": "webhook-secret" }
+          }
+        }
+      }
+    },
+    "rbac": {
+      "type": "object",
+      "description": "RBAC configuration",
+      "properties": {
+        "create": {
+          "type": "boolean",
+          "description": "Create ClusterRole and ClusterRoleBinding resources",
+          "default": true
+        }
+      }
+    }
+  }
+}
