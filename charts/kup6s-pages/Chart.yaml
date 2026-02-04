@@ -5,6 +5,7 @@ type: application
 version: 1.0.0-beta.6
 appVersion: "1.0.0-beta.6"
 home: https://github.com/kup6s/pages
+icon: https://pages-docs.kup6s.com/assets/kup6s-pages-icon.svg
 sources:
   - https://github.com/kup6s/pages
 keywords:
@@ -22,8 +23,12 @@ annotations:
   artifacthub.io/operatorCapabilities: Basic Install
   artifacthub.io/category: integration-delivery
   artifacthub.io/images: |
-    - name: logo
-      image: https://pages-docs.kup6s.com/assets/kup6s-pages-icon.svg
+    - name: operator
+      image: ghcr.io/kup6s/pages-operator
+    - name: syncer
+      image: ghcr.io/kup6s/pages-syncer
+    - name: nginx
+      image: docker.io/library/nginx:1.25-alpine
   artifacthub.io/links: |
     - name: Documentation
       url: https://pages-docs.kup6s.com
