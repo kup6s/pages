@@ -1,5 +1,7 @@
 name: Deploy Docs
 
+# Manual trigger only. Docs are automatically built after releases in release.yaml.
+# Use this workflow for testing docs changes or rebuilding without a release.
 on:
   workflow_dispatch:
 
