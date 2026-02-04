@@ -15,7 +15,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=$TARGETARCH go build -a -o syncer ./cmd/sync
 
 # Runtime Stage
 # Alpine instead of distroless because we need Git
-FROM alpine:3.19
+FROM alpine:3.21
 
 RUN apk add --no-cache git ca-certificates && \
     adduser -D -u 1000 syncer

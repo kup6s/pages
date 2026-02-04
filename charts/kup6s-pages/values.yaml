@@ -223,7 +223,7 @@ nginx:
     # -- nginx image repository
     repository: library/nginx
     # -- nginx image tag
-    tag: "1.25-alpine"
+    tag: "1.27-alpine"
     # -- Image pull policy
     pullPolicy: IfNotPresent
 
