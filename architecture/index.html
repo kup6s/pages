@@ -1,0 +1,174 @@
+<!doctype html><html lang=en dir=ltr><head><meta charset=UTF-8><meta name=viewport content="width=device-width,initial-scale=1"><meta name=description content="Architecture# Technical overview of the kup6s-pages architecture.
+Problem Statement# Existing solutions for static website hosting on Kubernetes are either inefficient or difficult to integrate:
+Kubero and similar PaaS solutions start one Pod per website. With many small static sites, this leads to significant resource overhead.
+Codeberg pages-server is efficient (one container for all sites) but handles TLS on its own. This conflicts with the standard Kubernetes pattern (Ingress Controller + cert-manager) and requires SSL passthrough, which prevents Layer-7 features like path routing.
+"><meta name=theme-color media="(prefers-color-scheme: light)" content="#ffffff"><meta name=theme-color media="(prefers-color-scheme: dark)" content="#343a40"><meta name=color-scheme content="light dark"><meta property="og:url" content="https://pages-docs.kup6s.com/architecture/"><meta property="og:site_name" content="kup6s-pages"><meta property="og:title" content="Architecture"><meta property="og:description" content="Architecture# Technical overview of the kup6s-pages architecture.
+Problem Statement# Existing solutions for static website hosting on Kubernetes are either inefficient or difficult to integrate:
+Kubero and similar PaaS solutions start one Pod per website. With many small static sites, this leads to significant resource overhead.
+Codeberg pages-server is efficient (one container for all sites) but handles TLS on its own. This conflicts with the standard Kubernetes pattern (Ingress Controller + cert-manager) and requires SSL passthrough, which prevents Layer-7 features like path routing."><meta property="og:locale" content="en"><meta property="og:type" content="article"><meta property="article:modified_time" content="2026-02-05T15:58:53+00:00"><meta itemprop=name content="Architecture"><meta itemprop=description content="Architecture# Technical overview of the kup6s-pages architecture.
+Problem Statement# Existing solutions for static website hosting on Kubernetes are either inefficient or difficult to integrate:
+Kubero and similar PaaS solutions start one Pod per website. With many small static sites, this leads to significant resource overhead.
+Codeberg pages-server is efficient (one container for all sites) but handles TLS on its own. This conflicts with the standard Kubernetes pattern (Ingress Controller + cert-manager) and requires SSL passthrough, which prevents Layer-7 features like path routing."><meta itemprop=dateModified content="2026-02-05T15:58:53+00:00"><meta itemprop=wordCount content="1069"><title>Architecture | kup6s-pages</title><link rel=icon href=/favicon.png><link rel=manifest href=/manifest.json><link rel=canonical href=https://pages-docs.kup6s.com/architecture/><link rel=stylesheet href=/book.min.61b79eb6f21d729be9aa756277ed0c3e984c5a2b10a41d100d933879c4557c7a.css integrity="sha256-YbeetvIdcpvpqnVid+0MPphMWisQpB0QDZM4ecRVfHo=" crossorigin=anonymous><script defer src=/fuse.min.js></script><script defer src=/en.search.min.ee15f69b9865de5d5d810142d5e40b323ed403548bd843f5d3bd0ecd8f63ea65.js integrity="sha256-7hX2m5hl3l1dgQFC1eQLMj7UA1SL2EP1070OzY9j6mU=" crossorigin=anonymous></script><link rel=manifest href=/assets/site.webmanifest><link rel=icon type=image/svg+xml href=/assets/kup6s-pages-icon.svg><meta property="og:type" content="website"><meta property="og:url" content="https://pages-docs.kup6s.com/architecture/"><meta property="og:title" content="Architecture | kup6s-pages"><meta property="og:description" content="Kubernetes Operator for multi-tenant static website hosting"><meta property="og:image" content="https://pages-docs.kup6s.com/assets/kup6s-pages-logo-wide.svg"><meta name=twitter:card content="summary_large_image"><meta name=twitter:url content="https://pages-docs.kup6s.com/architecture/"><meta name=twitter:title content="Architecture | kup6s-pages"><meta name=twitter:description content="Kubernetes Operator for multi-tenant static website hosting"><meta name=twitter:image content="https://pages-docs.kup6s.com/assets/kup6s-pages-logo-wide.svg"><meta name=theme-color content="#1e1e1e" media="(prefers-color-scheme: dark)"><meta name=theme-color content="#ffffff" media="(prefers-color-scheme: light)"></head><body dir=ltr class="book-kind-page book-type-page"><input type=checkbox class="hidden toggle" id=menu-control>
+<input type=checkbox class="hidden toggle" id=toc-control><main class="container flex"><aside class=book-menu><div class=book-menu-content><nav><h2 class=book-brand><a class="flex align-center" href=/><img src=/assets/kup6s-pages-logo-wide.svg alt=Logo><span>kup6s-pages</span></a></h2><div class="book-search hidden"><input id=book-search-input type=text placeholder=Search aria-label=Search maxlength=64 data-hotkeys=s/><div class="book-search-spinner hidden"></div><ul id=book-search-results></ul></div><script>document.querySelector(".book-search").classList.remove("hidden")</script><ul><li><a href=/installation/>Installation</a></li><li><input type=checkbox id=section-c57926c85568c8be6646f4e89300c5e4 class=toggle>
+<label for=section-c57926c85568c8be6646f4e89300c5e4 class=flex><a href=/usage/>Usage</a>
+<img src=/icons/chevron-right.svg class=book-icon alt=Expand></label><ul><li><a href=/usage/private-repos/>Private Repositories</a></li><li><a href=/usage/custom-domains/>Custom Domains</a></li><li><a href=/usage/path-prefix/>Path Prefix</a></li><li><a href=/usage/webhooks/>Webhooks</a></li></ul></li><li><input type=checkbox id=section-74b79b33c03efc602d13307280201ae1 class=toggle>
+<label for=section-74b79b33c03efc602d13307280201ae1 class=flex><a href=/reference/>Reference</a>
+<img src=/icons/chevron-right.svg class=book-icon alt=Expand></label><ul><li><a href=/reference/crd/>StaticSite CRD</a></li><li><a href=/reference/helm-values/>Helm Values</a></li><li><a href=/reference/cli-flags/>CLI Flags</a></li></ul></li><li><a href=/troubleshooting/>Troubleshooting</a></li><li><a href=/architecture/ class=active>Architecture</a></li><li><a href=/security/>Security</a></li><li><a href=/development/>Development</a></li></ul><ul><li><a href=https://github.com/kup6s/pages target=_blank rel=noopener>GitHub</a></li></ul></nav><script>(function(){var e=document.querySelector("aside .book-menu-content");addEventListener("beforeunload",function(){localStorage.setItem("menu.scrollTop",e.scrollTop)}),e.scrollTop=localStorage.getItem("menu.scrollTop")})()</script></div></aside><div class=book-page><header class="book-header hidden"><div class="flex align-center justify-between"><label for=menu-control><img src=/icons/menu.svg class=book-icon alt=Menu></label><h3>Architecture</h3><label for=toc-control><img src=/icons/toc.svg class=book-icon alt="Table of Contents"></label></div><aside class=hidden><nav id=TableOfContents><ul><li><a href=#problem-statement>Problem Statement</a></li><li><a href=#design-goals>Design Goals</a></li><li><a href=#components>Components</a><ul><li><a href=#operator>Operator</a></li><li><a href=#syncer>Syncer</a></li><li><a href=#nginx>nginx</a></li></ul></li><li><a href=#request-flow>Request Flow</a></li><li><a href=#sync-flow>Sync Flow</a><ul><li><a href=#periodic-sync>Periodic Sync</a></li><li><a href=#webhook-sync-instant>Webhook Sync (Instant)</a></li></ul></li><li><a href=#resource-efficiency>Resource Efficiency</a><ul><li><a href=#no-dynamic-nginx-configuration>No Dynamic nginx Configuration</a></li></ul></li><li><a href=#security-model>Security Model</a></li><li><a href=#deployment-overview>Deployment Overview</a></li><li><a href=#limitations>Limitations</a></li><li><a href=#future-extensions>Future Extensions</a></li></ul></nav></aside></header><article class="markdown book-article"><h1 id=architecture>Architecture<a class=anchor href=#architecture>#</a></h1><p>Technical overview of the kup6s-pages architecture.</p><h2 id=problem-statement>Problem Statement<a class=anchor href=#problem-statement>#</a></h2><p>Existing solutions for static website hosting on Kubernetes are either inefficient or difficult to integrate:</p><p><strong>Kubero</strong> and similar PaaS solutions start one Pod per website. With many small static sites, this leads to significant resource overhead.</p><p><strong>Codeberg pages-server</strong> is efficient (one container for all sites) but handles TLS on its own. This conflicts with the standard Kubernetes pattern (Ingress Controller + cert-manager) and requires SSL passthrough, which prevents Layer-7 features like path routing.</p><p><strong>git-sync as sidecar</strong> only synchronizes one repository per container. For many sites, you&rsquo;d need many sidecars.</p><h2 id=design-goals>Design Goals<a class=anchor href=#design-goals>#</a></h2><ol><li><strong>Resource efficiency</strong>: One nginx Pod serves all sites</li><li><strong>Kubernetes-native</strong>: Integration with Traefik IngressController and cert-manager</li><li><strong>Declarative</strong>: Sites are defined as Custom Resources</li><li><strong>Git-based</strong>: Automatic synchronization from Git repositories</li><li><strong>Custom Domains</strong>: Each site can have its own domain</li><li><strong>Simple</strong>: Minimal configuration for the end user</li></ol><h2 id=components>Components<a class=anchor href=#components>#</a></h2><pre tabindex=0><code>┌─────────────────────────────────────────────────────────────────────────┐
+│                                                                         │
+│  ┌──────────────┐      ┌──────────────┐      ┌──────────────┐          │
+│  │ StaticSite   │      │ StaticSite   │      │ StaticSite   │   ...    │
+│  │ CRD          │      │ CRD          │      │ CRD          │          │
+│  └──────┬───────┘      └──────┬───────┘      └──────┬───────┘          │
+│         │                     │                     │                   │
+│         └─────────────────────┼─────────────────────┘                   │
+│                               │                                         │
+│                               ▼                                         │
+│                      ┌────────────────┐                                 │
+│                      │    Operator    │                                 │
+│                      │                │                                 │
+│                      │ • Watches CRDs │                                 │
+│                      │ • Creates:     │                                 │
+│                      │   - Ingress    │                                 │
+│                      │   - Middleware │                                 │
+│                      │   - Certific.  │                                 │
+│                      └────────────────┘                                 │
+│                                                                         │
+│         ┌──────────────────────┼──────────────────────┐                 │
+│         │                      │                      │                 │
+│         ▼                      ▼                      ▼                 │
+│  ┌────────────┐        ┌─────────────┐        ┌─────────────┐          │
+│  │ Traefik    │        │ Traefik     │        │ cert-manager│          │
+│  │ Ingress-   │        │ Middleware  │        │ Certificate │          │
+│  │ Route      │        │ (addPrefix) │        │             │          │
+│  └────────────┘        └─────────────┘        └─────────────┘          │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────────┐
+│                                                                         │
+│                        ┌────────────────┐                               │
+│                        │     Syncer     │                               │
+│                        │                │                               │
+│                        │ • Reads CRDs   │                               │
+│                        │ • Git clone/   │                               │
+│                        │   pull         │                               │
+│                        │ • Webhook API  │                               │
+│                        └───────┬────────┘                               │
+│                                │                                        │
+│                                ▼                                        │
+│                     ┌─────────────────────┐                             │
+│                     │   PVC: /sites       │                             │
+│                     │   ├── site-a/       │                             │
+│                     │   ├── site-b/       │                             │
+│                     │   └── site-c/       │                             │
+│                     └──────────┬──────────┘                             │
+│                                │                                        │
+│                                ▼                                        │
+│                     ┌─────────────────────┐                             │
+│                     │   nginx (1 Pod)     │                             │
+│                     │   root /sites;      │                             │
+│                     └─────────────────────┘                             │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘</code></pre><h3 id=operator>Operator<a class=anchor href=#operator>#</a></h3><p>Watches StaticSite resources across all namespaces and creates:</p><ul><li><strong>Traefik IngressRoute</strong> for routing traffic</li><li><strong>Traefik Middleware</strong> with <code>addPrefix</code> for path-based routing</li><li><strong>cert-manager Certificate</strong> for TLS</li></ul><p>All generated resources are created in the system namespace (<code>kup6s-pages</code>) for improved security.</p><h3 id=syncer>Syncer<a class=anchor href=#syncer>#</a></h3><p>Synchronizes Git repositories to the shared PVC:</p><ul><li>Periodically polls all StaticSite CRDs</li><li>Clones new repos, pulls existing ones</li><li>Supports private repos via Secrets</li><li>Provides HTTP API for webhooks</li></ul><h3 id=nginx>nginx<a class=anchor href=#nginx>#</a></h3><p>A single nginx Deployment serves all sites with a static configuration:</p><div class=highlight><pre tabindex=0 class=chroma><code class=language-nginx data-lang=nginx><span class=line><span class=cl><span class=k>server</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>    <span class=kn>listen</span> <span class=mi>80</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kn>root</span> <span class=s>/sites</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=kn>location</span> <span class=s>/</span> <span class=p>{</span>
+</span></span><span class=line><span class=cl>        <span class=kn>try_files</span> <span class=nv>$uri</span> <span class=nv>$uri/</span> <span class=nv>$uri/index.html</span> <span class=p>=</span><span class=mi>404</span><span class=p>;</span>
+</span></span><span class=line><span class=cl>    <span class=p>}</span>
+</span></span><span class=line><span class=cl><span class=p>}</span></span></span></code></pre></div><p>No dynamic configuration needed - routing is handled by Traefik via addPrefix.</p><h2 id=request-flow>Request Flow<a class=anchor href=#request-flow>#</a></h2><pre tabindex=0><code>HTTPS Request: www.customer.com/about.html
+         │
+         │ 1. TLS Termination (Traefik)
+         ▼
+┌─────────────────────────────────────────────────────┐
+│  Traefik                                            │
+│                                                     │
+│  Route Match: Host(`www.customer.com`)              │
+│  Middleware:  addPrefix(/customer-website)          │
+│                                                     │
+│  Internal Request: /customer-website/about.html     │
+└────────────────────────┬────────────────────────────┘
+                         │
+                         │ 2. HTTP to nginx Service
+                         ▼
+┌─────────────────────────────────────────────────────┐
+│  nginx                                              │
+│                                                     │
+│  root /sites;                                       │
+│  Request: /customer-website/about.html              │
+│  Served:  /sites/customer-website/about.html        │
+└────────────────────────┬────────────────────────────┘
+                         │
+                         │ 3. File from PVC
+                         ▼
+┌─────────────────────────────────────────────────────┐
+│  PVC: /sites                                        │
+│                                                     │
+│  /sites/customer-website/                           │
+│  ├── index.html                                     │
+│  ├── about.html  ◄── This file                      │
+│  └── assets/                                        │
+└─────────────────────────────────────────────────────┘</code></pre><h2 id=sync-flow>Sync Flow<a class=anchor href=#sync-flow>#</a></h2><h3 id=periodic-sync>Periodic Sync<a class=anchor href=#periodic-sync>#</a></h3><pre tabindex=0><code>┌──────────────┐     ┌─────────────────────────────────────┐
+│   Syncer     │     │  Kubernetes API                     │
+│              │     │                                     │
+│  Timer: 5m   │────▶│  GET /apis/pages.kup6s.com/v1beta1/ │
+│              │     │      staticsites                    │
+└──────┬───────┘     └─────────────────────────────────────┘
+       │
+       │ For each StaticSite:
+       ▼
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│  if /sites/&lt;name&gt;/.git exists:                           │
+│      git pull                                            │
+│  else:                                                   │
+│      git clone --depth=1 &lt;repo&gt; /sites/&lt;name&gt;            │
+│                                                          │
+│  Status Update: lastSync, lastCommit                     │
+│                                                          │
+└──────────────────────────────────────────────────────────┘</code></pre><h3 id=webhook-sync-instant>Webhook Sync (Instant)<a class=anchor href=#webhook-sync-instant>#</a></h3><pre tabindex=0><code>┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│   Forgejo    │     │   Traefik    │     │   Syncer     │
+│              │     │              │     │              │
+│  git push    │────▶│  webhook.    │────▶│  POST        │
+│              │     │  pages.      │     │  /webhook/   │
+│              │     │  kup6s.io    │     │  forgejo     │
+└──────────────┘     └──────────────┘     └──────┬───────┘
+                                                 │
+       ┌─────────────────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────────────────────────────────┐
+│                                                          │
+│  1. Parse Webhook Payload (repo URL, branch)             │
+│  2. Find all StaticSites with this repo URL              │
+│  3. git pull for each matching site                      │
+│  4. Status Update                                        │
+│                                                          │
+└──────────────────────────────────────────────────────────┘</code></pre><h2 id=resource-efficiency>Resource Efficiency<a class=anchor href=#resource-efficiency>#</a></h2><table><thead><tr><th>Approach</th><th>100 Sites</th><th>1000 Sites</th></tr></thead><tbody><tr><td>Pod per Site</td><td>100 Pods</td><td>1000 Pods</td></tr><tr><td>kup6s-pages</td><td>3 Pods</td><td>3 Pods</td></tr></tbody></table><p>The three Pods are: Operator (1), Syncer (1), nginx (1-2 for HA).</p><h3 id=no-dynamic-nginx-configuration>No Dynamic nginx Configuration<a class=anchor href=#no-dynamic-nginx-configuration>#</a></h3><p>The addPrefix pattern eliminates the need to reconfigure nginx for each new site:</p><ul><li>No ConfigMap updates</li><li>No nginx reload</li><li>No race conditions</li></ul><h2 id=security-model>Security Model<a class=anchor href=#security-model>#</a></h2><ul><li><strong>Operator</strong>: ClusterRole for watching StaticSites, but only creates resources in the system namespace</li><li><strong>Syncer</strong>: No cluster-wide secret access by default (opt-in via namespace Roles)</li><li><strong>SSRF Protection</strong>: Mandatory <code>--allowed-hosts</code> flag restricts which Git hosts can be accessed</li><li><strong>Pod Security</strong>: All pods run as non-root with read-only root filesystem</li></ul><p>See <a href=/security/>Security</a> for detailed RBAC documentation.</p><h2 id=deployment-overview>Deployment Overview<a class=anchor href=#deployment-overview>#</a></h2><pre tabindex=0><code>Namespace: kup6s-pages (System)
+├── Deployment: pages-operator
+│   └── Pod: operator
+├── Deployment: pages-syncer
+│   └── Pod: syncer
+├── Deployment: static-sites-nginx
+│   └── Pod: nginx (replicas: 2)
+├── Service: static-sites-nginx
+├── Service: pages-syncer (for webhooks)
+├── PVC: static-sites-data
+├── ConfigMap: nginx-config
+├── ServiceAccounts + RBAC
+│
+│ Generated resources (all in system namespace):
+├── IngressRoute: pages--customer-a-website (generated)
+├── IngressRoute: pages--customer-b-docs (generated)
+├── Middleware: pages--customer-a-website-prefix (generated)
+├── Middleware: pages--customer-b-docs-prefix (generated)
+├── Certificate: www-customer-a-com-tls (generated)
+└── Certificate: docs-customer-b-com-tls (generated)
+
+Namespace: pages (User Sites)
+├── StaticSite: customer-a-website
+├── StaticSite: customer-b-docs
+└── Secret: git-credentials (optional)</code></pre><p>Note: All generated Traefik and cert-manager resources are created in the system
+namespace for improved security. Users can see resource references via <code>status.resources</code>.</p><h2 id=limitations>Limitations<a class=anchor href=#limitations>#</a></h2><ol><li><strong>RWX Storage required</strong>: The PVC must support ReadWriteMany (e.g., Longhorn, NFS, CephFS)</li><li><strong>No Build Pipeline</strong>: Only serves static files (build in CI/CD)</li><li><strong>No Preview Deployments</strong>: Each StaticSite is a fixed configuration</li><li><strong>Single Point of Sync</strong>: The Syncer is a single Pod</li></ol><h2 id=future-extensions>Future Extensions<a class=anchor href=#future-extensions>#</a></h2><ul><li><strong>Preview Deployments</strong>: Automatic sites for Pull Requests</li><li><strong>Build Integration</strong>: Optional build container before sync</li><li><strong>Metrics</strong>: Prometheus metrics for sync status and errors</li><li><strong>UI</strong>: Web dashboard for site management</li><li><strong>Multi-Cluster</strong>: Sync to multiple clusters</li></ul></article><footer class=book-footer><div class="flex flex-wrap justify-between"><div></div><div></div></div><div class="flex flex-wrap justify-between"><span><a href=/troubleshooting/ class="flex align-center"><img src=/icons/backward.svg class=book-icon alt=Backward>
+<span>Troubleshooting</span>
+</a></span><span><a href=/security/ class="flex align-center"><span>Security</span>
+<img src=/icons/forward.svg class=book-icon alt=Forward></a></span></div><hr><p style=text-align:center;font-size:.85em;color:var(--gray-500)>Version 1.0.0-rc.1 | Built 2026-02-05<br>Copyright 2026 Klein & Partner KG, Völs, Austria and contributors</p><script>(function(){document.querySelectorAll("pre:has(code)").forEach(e=>{e.addEventListener("click",e.focus),e.addEventListener("copy",function(t){if(t.preventDefault(),navigator.clipboard){const t=window.getSelection().toString()||e.textContent;navigator.clipboard.writeText(t)}})})})()</script></footer><label for=menu-control class="hidden book-menu-overlay"></label></div><aside class=book-toc><div class=book-toc-content><nav id=TableOfContents><ul><li><a href=#problem-statement>Problem Statement</a></li><li><a href=#design-goals>Design Goals</a></li><li><a href=#components>Components</a><ul><li><a href=#operator>Operator</a></li><li><a href=#syncer>Syncer</a></li><li><a href=#nginx>nginx</a></li></ul></li><li><a href=#request-flow>Request Flow</a></li><li><a href=#sync-flow>Sync Flow</a><ul><li><a href=#periodic-sync>Periodic Sync</a></li><li><a href=#webhook-sync-instant>Webhook Sync (Instant)</a></li></ul></li><li><a href=#resource-efficiency>Resource Efficiency</a><ul><li><a href=#no-dynamic-nginx-configuration>No Dynamic nginx Configuration</a></li></ul></li><li><a href=#security-model>Security Model</a></li><li><a href=#deployment-overview>Deployment Overview</a></li><li><a href=#limitations>Limitations</a></li><li><a href=#future-extensions>Future Extensions</a></li></ul></nav></div></aside></main></body></html>
