@@ -114,7 +114,7 @@ jobs:
           cosign sign --yes ghcr.io/${{ github.repository_owner }}/kup6s-pages:${{ steps.version.outputs.version }}
 
       - name: Install oras
-        uses: oras-project/setup-oras@v1
+        uses: oras-project/setup-oras@v2
 
       - name: Push Artifact Hub metadata
         run: |
