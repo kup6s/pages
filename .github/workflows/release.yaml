@@ -92,7 +92,7 @@ jobs:
           sed -i "s/^appVersion:.*/appVersion: \"${{ steps.version.outputs.version }}\"/" charts/kup6s-pages/Chart.yaml
 
       - name: Set up Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@v5
 
       - name: Login to GHCR
         uses: docker/login-action@v4
@@ -114,7 +114,7 @@ jobs:
           cosign sign --yes ghcr.io/${{ github.repository_owner }}/kup6s-pages:${{ steps.version.outputs.version }}
 
       - name: Install oras
-        uses: oras-project/setup-oras@v1
+        uses: oras-project/setup-oras@v2
 
       - name: Push Artifact Hub metadata
         run: |
