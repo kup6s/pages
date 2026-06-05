@@ -6,10 +6,10 @@ toolchain go1.25.6
 
 require (
 	github.com/go-git/go-git/v5 v5.16.4
-	k8s.io/api v0.35.0
-	k8s.io/apimachinery v0.35.0
-	k8s.io/client-go v0.35.0
-	sigs.k8s.io/controller-runtime v0.23.1
+	k8s.io/api v0.35.2
+	k8s.io/apimachinery v0.35.2
+	k8s.io/client-go v0.35.2
+	sigs.k8s.io/controller-runtime v0.23.3
 )
 
 require (
