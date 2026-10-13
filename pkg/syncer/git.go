@@ -305,7 +305,7 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 	}
 
 	// Clean up .repos directories
-	reposDir := filepath.Join(s.SitesRoot, ".repos")
+	reposDir := filepath.Join(s.SitesRoot, reposDirName)
 	if entries, err := os.ReadDir(reposDir); err == nil {
 		for _, entry := range entries {
 			name := entry.Name()
@@ -341,7 +341,7 @@ func (s *Syncer) DeleteSite(ctx context.Context, name string) error {
 	}
 
 	// Remove repo directory in .repos
-	repoPath := filepath.Join(s.SitesRoot, ".repos", name)
+	repoPath := filepath.Join(s.SitesRoot, reposDirName, name)
 	if err := removePathOrSymlink(repoPath); err != nil {
 		return fmt.Errorf("failed to remove repo path %s: %w", repoPath, err)
 	}
