@@ -40,7 +40,7 @@ Every update keeps the previous blobs: ten updates of 10 MB grew `.git` from 24 
 ## Decisions
 
 1. **No shared clones.** Each StaticSite keeps its own clone. Sharing an object store (shared clone or git worktrees) couples sites and tenants: a private repository's content could be served to a tenant without credentials, and one broken store breaks every dependent site. Sparse partial clones remove the disk cost that motivated sharing.
-2. **git CLI instead of go-git.** The syncer image already contains `git` (Alpine 3.21, git 2.47). go-git is removed from the syncer and its tests.
+2. **git CLI instead of go-git.** The syncer image already contains `git` (Alpine 3.24, git 2.54, since #159). go-git is removed from the syncer and its tests.
 3. **Partial clone for every site, sparse checkout when `path` is not `/`.** One code path for all sites.
 4. **Re-clone instead of gc** when `.git` grows, when `path`, `repo` or `branch` change, and when the local repository is broken.
 5. **Old content stays served on failure.** A failed fetch never removes a working site.
@@ -72,7 +72,7 @@ Credentials never appear in argv, `.git/config` or logs, and the URL-scoped key 
 
 Each invocation gets a context timeout from the new flag `--git-timeout` (default `10m`). Errors include git's stderr, truncated to 2 KiB.
 
-`path` is cleaned and its leading `/` removed. It is rejected when the result starts with `..`. An empty result means the repository root (no sparse checkout).
+`path` is rejected when any segment is `..` or the cleaned result starts with `-`; otherwise it is cleaned and its leading `/` removed. An empty result means the repository root (no sparse checkout).
 
 ### 2. Sync flow (`pkg/syncer/git.go`)
 
@@ -88,10 +88,10 @@ Layout, identical for every site:
 `syncSite` per site:
 
 1. Validate `repo` and `path`.
-2. Take the site's mutex (keyed `namespace/name`). Webhook and loop syncs of the same site run one after the other; different sites do not block each other.
+2. Take the site's mutex, keyed by name like the directories (#158). Webhook and loop syncs of the same site run one after the other; different sites do not block each other.
 3. Check free space (section 4).
 4. Decide:
-   - **Clone** when any of these is true: `.repos/<name>` is missing; `git rev-parse HEAD` fails; `remote.origin.url` differs from `spec.repo`; the branch in `remote.origin.fetch` differs from `spec.branch`; the sparse path (`git sparse-checkout list`, or none when `core.sparseCheckout` is unset) differs from `spec.path`; `remote.origin.promisor` is not `true` (a clone from the go-git era).
+   - **Clone** when any of these is true: `.repos/<name>` is missing; `git rev-parse HEAD` fails; `remote.origin.url` differs from `spec.repo`; the branch in `remote.origin.fetch` differs from `spec.branch`; the sparse path (`git sparse-checkout list`, or none when `core.sparseCheckout` is unset) differs from `spec.path`; the marker file `.git/pages-syncer` is missing. The syncer writes the marker after every complete clone. It identifies clones from the go-git era independently of the server: a server without partial-clone support does not set `remote.origin.promisor`, so checking that key would re-clone on every sync.
    - **Update** otherwise.
 5. Update: run `update`.
    - `fetch` fails: return the error. The existing checkout stays served.
@@ -106,11 +106,11 @@ Layout, identical for every site:
 7. On success set `Synced=True`, `lastSync`, `lastCommit`, and emit `SyncRecovered` if the site was failing before.
 8. On failure set `Synced=False` with a reason and the error message, and emit `SyncFailed` if the site was not failing before.
 
-Failure reasons: `CloneFailed`, `FetchFailed`, `AuthFailed` (secret missing or HTTP 401/403), `SubpathMissing`, `DiskFull`, `Timeout`, `InvalidSpec`.
+Failure reasons: `CloneFailed`, `FetchFailed`, `AuthFailed` (secret missing or HTTP 401/403), `SubpathMissing`, `DiskFull`, `Timeout`, `InvalidSpec`, and `SyncFailed` as fallback for errors outside these classes.
 
-At startup and in every cleanup run, all `.tmp-*` and `.old-*` entries under `.repos` are removed. Cleanup keeps removing `.repos/<name>` and `/sites/<name>` of deleted sites as today.
+At startup and in every cleanup run, all `.tmp-*` and `.old-*` entries under `.repos` and `.tmp-link-*` entries under the sites root are removed, except those of a site whose sync is running (its lock is held). Cleanup keeps removing `.repos/<name>` and `/sites/<name>` of deleted sites as today.
 
-Migration from the current layout needs no manual step: go-era clones fail the promisor check and are re-cloned on the first sync; broken partial clones are re-cloned; `path: /` directories become symlinks.
+Migration from the current layout needs no manual step: go-git clones lack the marker file and are re-cloned on the first sync; broken partial clones are re-cloned; `path: /` directories become symlinks.
 
 ### 3. Status ownership (`pkg/controller/staticsite.go`, `pkg/apis/v1beta1`)
 
@@ -124,6 +124,8 @@ The controller stops setting `phase: Ready` unconditionally. `updateFinalStatus`
 |---|---|---|
 | absent | `Pending` | `Waiting for first sync` |
 | `Unknown`, reason `Syncing` | `Syncing` | `Syncing since <lastTransitionTime>` |
+
+The syncer does not overwrite `Synced=False` with `Syncing`: a failing site keeps showing its failure while a retry clones, and no `SyncFailed` event is emitted per retry.
 | `True` | `Ready` | `Synced <lastCommit>` |
 | `False` | `Error` | `Sync failed: <reason>: <message>` |
 
@@ -156,6 +158,7 @@ Three layers.
 | `pages_syncer_sync_total` | syncer | `result`, `reason` |
 | `pages_syncer_git_duration_seconds` (histogram) | syncer | `op` (`clone`, `update`) |
 | `pages_syncer_volume_free_bytes` | syncer | none |
+| `pages_syncer_volume_size_bytes` | syncer | none |
 
 The operator computes per-site metrics at scrape time from its informer cache with a custom collector on the controller-runtime registry, so deleted sites leave no stale series. The syncer serves `/metrics` on a new port (`--metrics-addr`, default `:9090`), separate from the webhook port, which is publicly routed.
 
@@ -164,8 +167,8 @@ Chart, both disabled by default:
 - `metrics.podMonitor.enabled`: PodMonitors for operator and syncer.
 - `metrics.prometheusRule.enabled`: alerts
   - `PagesSiteSyncFailing`: `pages_site_synced == 0` for `metrics.prometheusRule.failingFor` (default 15 minutes). Covers failing sites, sites that never synced, and sites stuck in `Syncing`.
-  - `PagesSiteSyncStale`: `time() - pages_site_last_sync_timestamp_seconds > 3 × sync interval` for 15 minutes. Covers sites whose status still says `True` while the syncer no longer runs.
-  - `PagesVolumeLow`: free space below `metrics.prometheusRule.volumeLowPercent` (default `15`) for 10 minutes.
+  - `PagesSiteSyncStale`: `time() - pages_site_last_sync_timestamp_seconds > metrics.prometheusRule.staleAfterSeconds` (default 900, about 3 × the default sync interval; Helm cannot parse duration strings) for 15 minutes. Covers sites whose status still says `True` while the syncer no longer runs.
+  - `PagesVolumeLow`: `pages_syncer_volume_free_bytes / pages_syncer_volume_size_bytes` below `metrics.prometheusRule.volumeLowPercent` (default `15`) for 10 minutes.
 
 A crash-looping syncer is covered by `KubePodCrashLooping` from kube-prometheus-stack.
 
