@@ -60,6 +60,10 @@ type Syncer struct {
 	// Git overrides the git wrapper (tests); nil uses git from PATH.
 	Git *gitCLI
 
+	// MinFreePercent is the free space on the sites volume below which clones
+	// and updates are skipped; zero disables the check.
+	MinFreePercent float64
+
 	locks siteLocks
 }
 

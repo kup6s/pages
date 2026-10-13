@@ -3,6 +3,7 @@ package syncer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -39,8 +40,15 @@ func (s *Syncer) cloneSite(ctx context.Context, site *staticSiteData, subpath st
 	tmp := filepath.Join(reposDir, tempName(tmpRepoPrefix, site.Name))
 	log.FromContext(ctx).Info("Cloning repository", "site", site.Name, "repo", site.Repo, "path", subpath)
 
-	if err := s.git().clone(ctx, site.Repo, site.Branch, subpath, tmp, auth); err != nil {
+	cloneCtx, cancel := context.WithCancelCause(ctx)
+	defer cancel(nil)
+	go s.watchFreeSpace(cloneCtx, cancel)
+	if err := s.git().clone(cloneCtx, site.Repo, site.Branch, subpath, tmp, auth); err != nil {
 		_ = os.RemoveAll(tmp)
+		var diskFull *syncError
+		if errors.As(context.Cause(cloneCtx), &diskFull) {
+			return diskFull
+		}
 		return classifyGitError(pagesv1.SyncReasonCloneFailed, err)
 	}
 	if err := checkSubpath(tmp, subpath); err != nil {
@@ -163,6 +171,9 @@ func (s *Syncer) siteAuth(ctx context.Context, site *staticSiteData) (*gitAuth, 
 
 // syncRepo updates a usable clone in place and replaces anything else.
 func (s *Syncer) syncRepo(ctx context.Context, site *staticSiteData, subpath string, auth *gitAuth) (string, error) {
+	if err := s.checkFreeSpace(); err != nil {
+		return "", err
+	}
 	logger := log.FromContext(ctx)
 	dir := s.repoDir(site.Name)
 	if !s.cloneUsable(ctx, dir, site, subpath) {
