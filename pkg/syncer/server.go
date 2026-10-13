@@ -83,6 +83,8 @@ func (w *WebhookServer) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 
 // handleSync triggers a sync for a specific site
 func (w *WebhookServer) handleSync(ctx context.Context, rw http.ResponseWriter, r *http.Request, namespace, name string) {
+	// Senders give up after a few seconds; the sync must still finish.
+	ctx = context.WithoutCancel(ctx)
 	logger := log.FromContext(ctx)
 	logger.Info("Webhook triggered", "namespace", namespace, "name", name)
 
@@ -271,6 +273,8 @@ func (w *WebhookServer) handleGitHubWebhook(ctx context.Context, rw http.Respons
 
 // syncByRepo finds all sites with a repo URL and syncs them
 func (w *WebhookServer) syncByRepo(ctx context.Context, repoURL, branch string) error {
+	// Senders give up after a few seconds; the syncs must still finish.
+	ctx = context.WithoutCancel(ctx)
 	logger := log.FromContext(ctx)
 
 	// Load all StaticSites

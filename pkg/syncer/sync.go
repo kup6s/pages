@@ -179,6 +179,9 @@ func (s *Syncer) syncRepo(ctx context.Context, site *staticSiteData, subpath str
 	}
 	logger := log.FromContext(ctx)
 	dir := s.repoDir(site.Name)
+	if err := cancelled(ctx); err != nil {
+		return "", err
+	}
 	if !s.cloneUsable(ctx, dir, site, subpath) {
 		return s.recloneSite(ctx, site, subpath, auth)
 	}
@@ -186,6 +189,9 @@ func (s *Syncer) syncRepo(ctx context.Context, site *staticSiteData, subpath str
 	before, _ := s.git().head(ctx, dir)
 	start := time.Now()
 	if err := s.git().fetch(ctx, dir, site.Repo, site.Branch, auth); err != nil {
+		if cerr := cancelled(ctx); cerr != nil {
+			return "", cerr
+		}
 		if isLockError(err) {
 			logger.Info("Fetch blocked by a stale lock, cloning again", "site", site.Name, "error", err.Error())
 			return s.recloneSite(ctx, site, subpath, auth)
@@ -193,6 +199,9 @@ func (s *Syncer) syncRepo(ctx context.Context, site *staticSiteData, subpath str
 		return "", classifyGitError(pagesv1.SyncReasonFetchFailed, err)
 	}
 	if err := s.git().resetHard(ctx, dir, site.Repo, site.Branch, auth); err != nil {
+		if cerr := cancelled(ctx); cerr != nil {
+			return "", cerr
+		}
 		logger.Info("Reset failed, cloning again", "site", site.Name, "error", err.Error())
 		return s.recloneSite(ctx, site, subpath, auth)
 	}
@@ -212,6 +221,15 @@ func (s *Syncer) syncRepo(ctx context.Context, site *staticSiteData, subpath str
 		return "", newSyncError(pagesv1.SyncReasonSyncFailed, err)
 	}
 	return after, nil
+}
+
+// cancelled reports an interrupted sync. A cancelled context says nothing
+// about the state of the clone, so callers must not replace it.
+func cancelled(ctx context.Context) error {
+	if ctx.Err() == nil {
+		return nil
+	}
+	return classifyGitError(pagesv1.SyncReasonSyncFailed, ctx.Err())
 }
 
 func (s *Syncer) recloneSite(ctx context.Context, site *staticSiteData, subpath string, auth *gitAuth) (string, error) {

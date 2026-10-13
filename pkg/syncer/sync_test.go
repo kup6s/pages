@@ -450,3 +450,28 @@ func TestSyncSite_NonAsciiAndQuotedPathsDoNotReclone(t *testing.T) {
 		})
 	}
 }
+
+// A cancelled context says nothing about the clone: it must not be replaced.
+func TestSyncSite_CancelledContextKeepsClone(t *testing.T) {
+	r := newTestRemote(t, archiveFiles, remoteOptions{})
+	s := newTestSyncer(t, r)
+	site := testSite(r, "/2018")
+	mustSync(t, s, site)
+	markClone(t, s)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	err := s.syncSite(ctx, site)
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if syncReason(err) != pagesv1.SyncReasonSyncFailed {
+		t.Errorf("reason = %q, want SyncFailed", syncReason(err))
+	}
+	if cloneReplaced(s) {
+		t.Error("clone was replaced after cancellation")
+	}
+	if got := servedFile(t, s, "index.html"); got != "2018 v1" {
+		t.Errorf("served %q", got)
+	}
+}
