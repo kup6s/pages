@@ -3,7 +3,6 @@ package syncer
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -14,9 +13,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -41,6 +40,9 @@ func removePathOrSymlink(path string) error {
 type Syncer struct {
 	DynamicClient dynamic.Interface
 	ClientSet     kubernetes.Interface
+
+	// Recorder emits SyncFailed and SyncRecovered events; nil disables events.
+	Recorder events.EventRecorder
 
 	// Base directory for sites (e.g. /sites)
 	SitesRoot string
@@ -170,46 +172,6 @@ func (s *Syncer) getSecretValue(ctx context.Context, namespace, name, key string
 	}
 
 	return string(value), nil
-}
-
-// statusPatch is used to construct JSON patches for StaticSite status updates
-type statusPatch struct {
-	Status statusPatchData `json:"status"`
-}
-
-type statusPatchData struct {
-	Phase      string `json:"phase"`
-	Message    string `json:"message"`
-	LastSync   string `json:"lastSync"`
-	LastCommit string `json:"lastCommit"`
-}
-
-// updateStatus updates the status of the StaticSite
-func (s *Syncer) updateStatus(ctx context.Context, site *staticSiteData, phase, message, commit string) {
-	now := metav1.Now()
-
-	patch := statusPatch{
-		Status: statusPatchData{
-			Phase:      phase,
-			Message:    message,
-			LastSync:   now.Format(time.RFC3339),
-			LastCommit: commit,
-		},
-	}
-
-	patchBytes, err := json.Marshal(patch)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to marshal status patch", "site", site.Name)
-		return
-	}
-
-	_, err = s.DynamicClient.Resource(staticSiteGVR).
-		Namespace(site.Namespace).
-		Patch(ctx, site.Name, types.MergePatchType, patchBytes, metav1.PatchOptions{}, "status")
-
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update status", "site", site.Name)
-	}
 }
 
 // staticSiteData is a simplified structure for the Syncer

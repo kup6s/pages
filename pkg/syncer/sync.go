@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	pagesv1 "github.com/kup6s/pages/pkg/apis/v1beta1"
@@ -117,10 +118,14 @@ func (s *Syncer) syncSite(ctx context.Context, site *staticSiteData) error {
 
 	commit, err := s.syncSiteContent(ctx, site)
 	if err != nil {
-		s.updateStatus(ctx, site, "Error", err.Error(), "")
+		s.reportStatus(ctx, site, metav1.Condition{
+			Status: metav1.ConditionFalse, Reason: syncReason(err), Message: err.Error(),
+		}, "")
 		return err
 	}
-	s.updateStatus(ctx, site, "Ready", "Synced successfully", commit)
+	s.reportStatus(ctx, site, metav1.Condition{
+		Status: metav1.ConditionTrue, Reason: pagesv1.SyncReasonSynced, Message: "Synced " + commit,
+	}, commit)
 	log.FromContext(ctx).Info("Sync complete", "site", site.Name, "commit", commit)
 	return nil
 }
@@ -194,6 +199,9 @@ func (s *Syncer) syncRepo(ctx context.Context, site *staticSiteData, subpath str
 }
 
 func (s *Syncer) recloneSite(ctx context.Context, site *staticSiteData, subpath string, auth *gitAuth) (string, error) {
+	s.reportStatus(ctx, site, metav1.Condition{
+		Status: metav1.ConditionUnknown, Reason: pagesv1.SyncReasonSyncing, Message: "Cloning " + site.Repo,
+	}, "")
 	if err := s.cloneSite(ctx, site, subpath, auth); err != nil {
 		return "", err
 	}
