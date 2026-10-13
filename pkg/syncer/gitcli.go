@@ -125,9 +125,11 @@ func (g *gitCLI) inspect(ctx context.Context, dir string) (cloneInfo, error) {
 		}
 		// git C-quotes paths containing a double quote or control characters.
 		if strings.HasPrefix(listed, `"`) {
-			if listed, err = strconv.Unquote(listed); err != nil {
+			unquoted, err := strconv.Unquote(listed)
+			if err != nil {
 				return cloneInfo{}, fmt.Errorf("sparse path %q: %w", listed, err)
 			}
+			listed = unquoted
 		}
 		info.SparsePath = listed
 	}
