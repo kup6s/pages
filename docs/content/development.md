@@ -28,7 +28,7 @@ pages/
 
 ## Prerequisites
 
-- Go 1.21+
+- Go 1.26+
 - Helm 3
 - Docker (for building images)
 - Access to a Kubernetes cluster (for testing)
