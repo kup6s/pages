@@ -53,6 +53,10 @@ func (s *Syncer) cloneSite(ctx context.Context, site *staticSiteData, subpath st
 		}
 		return classifyGitError(pagesv1.SyncReasonCloneFailed, err)
 	}
+	if info, err := s.git().inspect(ctx, tmp); err == nil && info.Branch != site.Branch {
+		_ = os.RemoveAll(tmp)
+		return newSyncError(pagesv1.SyncReasonInvalidSpec, fmt.Errorf("spec.branch %q is not a branch", site.Branch))
+	}
 	if err := checkSubpath(tmp, subpath); err != nil {
 		_ = os.RemoveAll(tmp)
 		return err

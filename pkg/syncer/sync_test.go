@@ -475,3 +475,21 @@ func TestSyncSite_CancelledContextKeepsClone(t *testing.T) {
 		t.Errorf("served %q", got)
 	}
 }
+
+func TestSyncSite_TagAsBranchIsInvalidSpec(t *testing.T) {
+	r := newTestRemote(t, archiveFiles, remoteOptions{})
+	runGit(t, r.workDir, "tag", "v1")
+	runGit(t, r.workDir, "push", "--quiet", "origin", "refs/tags/v1")
+	s := newTestSyncer(t, r)
+	site := testSite(r, "/2018")
+	site.Branch = "v1"
+
+	err := s.syncSite(context.Background(), site)
+	if syncReason(err) != pagesv1.SyncReasonInvalidSpec {
+		t.Fatalf("err = %v (reason %q), want InvalidSpec", err, syncReason(err))
+	}
+	assertNoTempEntries(t, s)
+	if _, err := os.Lstat(s.repoDir("site")); !os.IsNotExist(err) {
+		t.Error("a clone of a tag was kept")
+	}
+}
