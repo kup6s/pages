@@ -77,3 +77,21 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].args
           content: --allowed-hosts=forgejo.example.com,*.gitlab.internal
+
+  - it: should pass git timeout, free-space and metrics flags
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --git-timeout=10m
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --min-free-percent=10
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --metrics-addr=:9090
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content:
+            name: metrics
+            containerPort: 9090
+            protocol: TCP

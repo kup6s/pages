@@ -13,6 +13,10 @@ rules:
   - apiGroups: ["pages.kup6s.com"]
     resources: ["staticsites/status"]
     verbs: ["get", "update", "patch"]
+  # Events for sync failures and recoveries
+  - apiGroups: ["events.k8s.io"]
+    resources: ["events"]
+    verbs: ["create", "patch"]
   # NOTE: Secrets access removed for security (issue #8)
   # Users must create Role/RoleBinding in their namespace to grant syncer access
   # See README.md "Private Repositories" section

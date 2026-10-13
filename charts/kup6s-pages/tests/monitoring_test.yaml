@@ -1,0 +1,52 @@
+suite: monitoring tests
+templates:
+  - templates/podmonitor.yaml
+  - templates/prometheusrule.yaml
+tests:
+  - it: should render nothing by default
+    asserts:
+      - hasDocuments:
+          count: 0
+
+  - it: should create PodMonitors for operator and syncer
+    template: templates/podmonitor.yaml
+    set:
+      metrics.podMonitor.enabled: true
+      metrics.podMonitor.labels:
+        release: prometheus
+    asserts:
+      - hasDocuments:
+          count: 2
+      - isKind:
+          of: PodMonitor
+      - equal:
+          path: spec.podMetricsEndpoints[0].port
+          value: metrics
+      - equal:
+          path: metadata.labels.release
+          value: prometheus
+      - equal:
+          path: spec.selector.matchLabels["app.kubernetes.io/component"]
+          value: syncer
+        documentIndex: 1
+
+  - it: should create the alert rules
+    template: templates/prometheusrule.yaml
+    set:
+      metrics.prometheusRule.enabled: true
+      metrics.prometheusRule.staleAfterSeconds: 1800
+    asserts:
+      - isKind:
+          of: PrometheusRule
+      - equal:
+          path: spec.groups[0].rules[0].alert
+          value: PagesSiteSyncFailing
+      - equal:
+          path: spec.groups[0].rules[0].expr
+          value: max by (namespace, name) (pages_site_synced) == 0
+      - equal:
+          path: spec.groups[0].rules[1].expr
+          value: time() - max by (namespace, name) (pages_site_last_sync_timestamp_seconds) > 1800
+      - equal:
+          path: spec.groups[0].rules[2].alert
+          value: PagesVolumeLow

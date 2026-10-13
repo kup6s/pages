@@ -30,6 +30,11 @@ data:
 
         root /sites;
 
+        # Never serve git metadata (.git directory or .git file)
+        location ~ (^|/)\.git(/|$) {
+            return 404;
+        }
+
         location / {
             # Try file, then directory, then index.html
             try_files $uri $uri/ $uri/index.html =404;

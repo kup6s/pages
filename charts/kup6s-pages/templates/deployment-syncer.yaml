@@ -44,6 +44,9 @@ spec:
             - --sync-interval={{ .Values.syncer.syncInterval }}
             - --webhook-addr={{ .Values.syncer.webhookAddr }}
             - --allowed-hosts={{ .Values.syncer.allowedHosts | join "," }}
+            - --git-timeout={{ .Values.syncer.gitTimeout }}
+            - --min-free-percent={{ .Values.syncer.minFreePercent }}
+            - --metrics-addr=:{{ .Values.syncer.metricsPort }}
             {{- if include "kup6s-pages.webhook.hasSecret" . }}
             - --webhook-secret=$(WEBHOOK_SECRET)
             {{- end }}
@@ -65,6 +68,9 @@ spec:
           ports:
             - name: webhook
               containerPort: 8080
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.syncer.metricsPort }}
               protocol: TCP
           volumeMounts:
             - name: sites

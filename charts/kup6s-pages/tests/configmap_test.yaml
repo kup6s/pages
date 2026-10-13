@@ -110,3 +110,9 @@ tests:
       - equal:
           path: metadata.name
           value: my-pages-nginx
+
+  - it: should never serve git metadata
+    asserts:
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: 'location ~ \(\^\|/\)\\\.git\(/\|\$\)'
