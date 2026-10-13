@@ -111,6 +111,10 @@ var recloneSlackBytes int64 = 50 << 20
 
 // syncSite brings one site to the head of its branch and reports the result.
 func (s *Syncer) syncSite(ctx context.Context, site *staticSiteData) error {
+	lock := s.locks.get(site.Name)
+	lock.Lock()
+	defer lock.Unlock()
+
 	commit, err := s.syncSiteContent(ctx, site)
 	if err != nil {
 		s.updateStatus(ctx, site, "Error", err.Error(), "")

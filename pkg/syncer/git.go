@@ -57,6 +57,8 @@ type Syncer struct {
 
 	// Git overrides the git wrapper (tests); nil uses git from PATH.
 	Git *gitCLI
+
+	locks siteLocks
 }
 
 // validateRepoURL checks if the repo URL is allowed (SSRF protection)
@@ -266,6 +268,8 @@ func (s *Syncer) RunLoop(ctx context.Context) {
 	ticker := time.NewTicker(s.DefaultInterval)
 	defer ticker.Stop()
 
+	s.removeLeftovers(ctx)
+
 	// Initial sync
 	if err := s.SyncAll(ctx); err != nil {
 		logger.Error(err, "Initial sync failed")
@@ -298,6 +302,8 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 		return fmt.Errorf("failed to list StaticSites: %w", err)
 	}
 
+	s.removeLeftovers(ctx)
+
 	// Set with all active site names
 	activeSites := make(map[string]bool)
 	for _, item := range list.Items {
@@ -313,8 +319,8 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 	for _, entry := range entries {
 		name := entry.Name()
 
-		// Skip .repos directory (handled separately)
-		if name == ".repos" {
+		// Dot entries are .repos and temporary entries, handled by removeLeftovers
+		if strings.HasPrefix(name, ".") {
 			continue
 		}
 
@@ -334,6 +340,9 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 	if entries, err := os.ReadDir(reposDir); err == nil {
 		for _, entry := range entries {
 			name := entry.Name()
+			if strings.HasPrefix(name, ".") {
+				continue
+			}
 			if !activeSites[name] {
 				repoPath := filepath.Join(reposDir, name)
 				logger.Info("Removing orphaned repo directory", "name", name)
@@ -351,6 +360,10 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 func (s *Syncer) DeleteSite(ctx context.Context, name string) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Deleting site", "name", name)
+
+	lock := s.locks.get(name)
+	lock.Lock()
+	defer lock.Unlock()
 
 	// Remove symlink/directory in /sites
 	sitePath := filepath.Join(s.SitesRoot, name)
