@@ -83,3 +83,20 @@ func TestCloneSite_WatchdogCancelsClone(t *testing.T) {
 	}
 	assertNoTempEntries(t, s)
 }
+
+func TestCheckFreeSpace_ReadsVolumeWhenDisabled(t *testing.T) {
+	calls := 0
+	saved := statFS
+	statFS = func(string) (uint64, uint64, error) {
+		calls++
+		return 0, 0, errors.New("statfs failed")
+	}
+	t.Cleanup(func() { statFS = saved })
+
+	if err := (&Syncer{MinFreePercent: 0}).checkFreeSpace(); err != nil {
+		t.Errorf("disabled guard returned %v", err)
+	}
+	if calls != 1 {
+		t.Errorf("statFS called %d times, want 1", calls)
+	}
+}

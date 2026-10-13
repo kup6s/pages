@@ -25,10 +25,10 @@ var freeSpaceCheckInterval = 5 * time.Second
 
 // checkFreeSpace fails with DiskFull below MinFreePercent.
 func (s *Syncer) checkFreeSpace() error {
+	free, total, err := statFS(s.SitesRoot)
 	if s.MinFreePercent <= 0 {
 		return nil
 	}
-	free, total, err := statFS(s.SitesRoot)
 	if err != nil {
 		return newSyncError(pagesv1.SyncReasonDiskFull, fmt.Errorf("cannot read free space of %s: %w", s.SitesRoot, err))
 	}
