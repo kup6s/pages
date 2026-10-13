@@ -16,6 +16,7 @@ spec:
   podMetricsEndpoints:
     - port: metrics
       interval: {{ .Values.metrics.podMonitor.interval }}
+      honorLabels: true
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor

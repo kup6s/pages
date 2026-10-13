@@ -25,6 +25,15 @@ tests:
       - equal:
           path: metadata.labels.release
           value: prometheus
+      # Per-site metrics carry their own namespace label; without honorLabels
+      # the scrape renames it to exported_namespace.
+      - equal:
+          path: spec.podMetricsEndpoints[0].honorLabels
+          value: true
+        documentIndex: 0
+      - notExists:
+          path: spec.podMetricsEndpoints[0].honorLabels
+        documentIndex: 1
       - equal:
           path: spec.selector.matchLabels["app.kubernetes.io/component"]
           value: syncer
