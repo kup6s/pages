@@ -64,6 +64,9 @@ type Syncer struct {
 	// and updates are skipped; zero disables the check.
 	MinFreePercent float64
 
+	// Metrics records sync results; nil disables metrics.
+	Metrics *Metrics
+
 	locks siteLocks
 }
 

@@ -26,6 +26,9 @@ var freeSpaceCheckInterval = 5 * time.Second
 // checkFreeSpace fails with DiskFull below MinFreePercent.
 func (s *Syncer) checkFreeSpace() error {
 	free, total, err := statFS(s.SitesRoot)
+	if err == nil {
+		s.Metrics.setVolume(free, total)
+	}
 	if s.MinFreePercent <= 0 {
 		return nil
 	}

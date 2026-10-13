@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/log"
@@ -33,6 +34,7 @@ func (s *Syncer) repoDir(name string) string {
 // cloneSite clones into a temporary directory and swaps the result into
 // place, so an interrupted clone never looks like a valid one.
 func (s *Syncer) cloneSite(ctx context.Context, site *staticSiteData, subpath string, auth *gitAuth) error {
+	defer s.Metrics.observeGit("clone", time.Now())
 	reposDir := filepath.Join(s.SitesRoot, reposDirName)
 	if err := os.MkdirAll(reposDir, 0o755); err != nil {
 		return newSyncError(pagesv1.SyncReasonCloneFailed, err)
@@ -125,6 +127,7 @@ func (s *Syncer) syncSite(ctx context.Context, site *staticSiteData) error {
 	defer lock.Unlock()
 
 	commit, err := s.syncSiteContent(ctx, site)
+	s.Metrics.observeSync(err)
 	if err != nil {
 		s.reportStatus(ctx, site, metav1.Condition{
 			Status: metav1.ConditionFalse, Reason: syncReason(err), Message: err.Error(),
@@ -181,6 +184,7 @@ func (s *Syncer) syncRepo(ctx context.Context, site *staticSiteData, subpath str
 	}
 
 	before, _ := s.git().head(ctx, dir)
+	start := time.Now()
 	if err := s.git().fetch(ctx, dir, site.Repo, site.Branch, auth); err != nil {
 		if isLockError(err) {
 			logger.Info("Fetch blocked by a stale lock, cloning again", "site", site.Name, "error", err.Error())
@@ -192,6 +196,7 @@ func (s *Syncer) syncRepo(ctx context.Context, site *staticSiteData, subpath str
 		logger.Info("Reset failed, cloning again", "site", site.Name, "error", err.Error())
 		return s.recloneSite(ctx, site, subpath, auth)
 	}
+	s.Metrics.observeGit("update", start)
 	after, err := s.git().head(ctx, dir)
 	if err != nil {
 		return s.recloneSite(ctx, site, subpath, auth)
