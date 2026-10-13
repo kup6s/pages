@@ -53,20 +53,37 @@ func siteFromTempName(prefix, entry string) (string, bool) {
 }
 
 // replaceSymlink points link at target with an atomic rename. A directory at
-// link (layout before sparse clones) is removed first.
+// link (layout before sparse clones) is moved aside first and deleted only
+// after the symlink is in place, so the outage does not last as long as the
+// recursive delete. A failed delete is left for the leftover sweep.
 func replaceSymlink(target, link string) error {
+	dir := filepath.Dir(link)
+	aside := ""
 	if info, err := os.Lstat(link); err == nil && info.IsDir() {
-		if err := os.RemoveAll(link); err != nil {
-			return fmt.Errorf("remove legacy directory %s: %w", link, err)
+		aside = filepath.Join(dir, tempName(tmpLinkPrefix, filepath.Base(link)))
+		if err := os.Rename(link, aside); err != nil {
+			return fmt.Errorf("move legacy directory %s aside: %w", link, err)
 		}
 	}
-	tmp := filepath.Join(filepath.Dir(link), tempName(tmpLinkPrefix, filepath.Base(link)))
+	tmp := filepath.Join(dir, tempName(tmpLinkPrefix, filepath.Base(link)))
 	if err := os.Symlink(target, tmp); err != nil {
+		restoreAside(aside, link)
 		return err
 	}
 	if err := os.Rename(tmp, link); err != nil {
 		_ = os.Remove(tmp)
+		restoreAside(aside, link)
 		return err
 	}
+	if aside != "" {
+		_ = os.RemoveAll(aside)
+	}
 	return nil
+}
+
+// restoreAside puts a moved-aside legacy directory back so it keeps serving.
+func restoreAside(aside, link string) {
+	if aside != "" {
+		_ = os.Rename(aside, link)
+	}
 }

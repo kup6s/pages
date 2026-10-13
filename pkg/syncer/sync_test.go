@@ -93,8 +93,13 @@ func TestCloneSite_ReplacesLegacyDirectory(t *testing.T) {
 	r := newTestRemote(t, archiveFiles, remoteOptions{})
 	s := newTestSyncer(t, r)
 	legacy := filepath.Join(s.SitesRoot, "site")
-	if err := os.MkdirAll(filepath.Join(legacy, ".git"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(legacy, "nested"), 0o755); err != nil {
 		t.Fatal(err)
+	}
+	for _, f := range []string{"index.html", "nested/old.html"} {
+		if err := os.WriteFile(filepath.Join(legacy, f), []byte("legacy"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	if err := s.cloneSite(context.Background(), testSite(r, "/"), "", nil); err != nil {
@@ -103,6 +108,13 @@ func TestCloneSite_ReplacesLegacyDirectory(t *testing.T) {
 	if info, err := os.Lstat(legacy); err != nil || info.Mode()&os.ModeSymlink == 0 {
 		t.Errorf("site is not a symlink after migration (err=%v)", err)
 	}
+	if got := servedFile(t, s, "index.html"); got != "root" {
+		t.Errorf("served index.html = %q, want root", got)
+	}
+	if _, err := os.Stat(filepath.Join(s.SitesRoot, "site", "nested", "old.html")); err == nil {
+		t.Error("legacy content still present")
+	}
+	assertNoTempEntries(t, s)
 }
 
 func TestCloneSite_FailureKeepsPreviousClone(t *testing.T) {

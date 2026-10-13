@@ -75,11 +75,17 @@ func TestReplaceSymlink(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dirSite, "sub"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(dirSite, "sub", "index.html"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	if err := replaceSymlink(target1, dirSite); err != nil {
 		t.Fatalf("replace directory: %v", err)
 	}
 	if got, _ := os.Readlink(dirSite); got != target1 {
 		t.Errorf("legacy -> %q, want %q", got, target1)
+	}
+	if _, err := os.Stat(filepath.Join(dirSite, "sub")); err == nil {
+		t.Error("legacy content still reachable through the link")
 	}
 
 	entries, _ := os.ReadDir(root)
