@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -72,7 +73,7 @@ func (g *gitCLI) clone(ctx context.Context, repoURL, branch, subpath, dest strin
 	if subpath == "" {
 		return nil
 	}
-	_, err := g.run(ctx, dest, repoURL, auth, "sparse-checkout", "set", subpath)
+	_, err := g.run(ctx, dest, repoURL, auth, "sparse-checkout", "set", "--", subpath)
 	return err
 }
 
@@ -148,7 +149,14 @@ func (g *gitCLI) run(ctx context.Context, dir, repoURL string, auth *gitAuth, ar
 	if bin == "" {
 		bin = "git"
 	}
-	cmd := exec.CommandContext(ctx, bin, args...)
+	// Redirects would carry the credentials, and the request, to another host.
+	full := append([]string{"-c", "http.followRedirects=false"}, args...)
+	cmd := exec.CommandContext(ctx, bin, full...)
+	// git spawns helpers (git-remote-https, index-pack) that hold the output
+	// pipes open; kill the whole process group so the timeout really bounds git.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	cmd.WaitDelay = 5 * time.Second
 	cmd.Dir = dir
 	cmd.Env = gitEnv(dir, repoURL, auth)
 	var stdout, stderr bytes.Buffer

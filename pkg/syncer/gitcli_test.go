@@ -4,10 +4,15 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -175,12 +180,56 @@ func TestGitCLI_InspectRejectsBrokenClone(t *testing.T) {
 	}
 }
 
-// sleepingGit returns a fake git binary that hangs, for timeout tests.
+// sleepingGit returns a fake git binary that hangs in a child process which
+// keeps the output pipes open, like git-remote-https does.
 func sleepingGit(t *testing.T) string {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "git")
-	if err := os.WriteFile(p, []byte("#!/bin/sh\nexec sleep 30\n"), 0o755); err != nil {
+	if err := os.WriteFile(p, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	return p
+}
+
+func TestGitCLI_CredentialsAreNotSentToRedirectTargets(t *testing.T) {
+	r := newTestRemote(t, archiveFiles, remoteOptions{})
+	backend, err := url.Parse(r.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy := httputil.NewSingleHostReverseProxy(backend)
+	var leaked atomic.Bool
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Header.Get("Authorization") != "" {
+			leaked.Store(true)
+		}
+		proxy.ServeHTTP(w, req)
+	}))
+	defer target.Close()
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		// Same loopback address under another name, i.e. another host.
+		to := strings.Replace(target.URL, "127.0.0.1", "localhost", 1) + req.URL.RequestURI()
+		http.Redirect(w, req, to, http.StatusFound)
+	}))
+	defer origin.Close()
+
+	err = (&gitCLI{}).clone(context.Background(), origin.URL+"/", "main", "", filepath.Join(t.TempDir(), "c"),
+		&gitAuth{Username: "u", Password: "p"})
+	if err == nil {
+		t.Error("clone followed a redirect, want failure")
+	}
+	if leaked.Load() {
+		t.Error("Authorization header reached the redirect target")
+	}
+}
+
+func TestGitCLI_SubpathStartingWithDashIsNotAnOption(t *testing.T) {
+	r := newTestRemote(t, map[string]string{"index.html": "root", "--stdin/index.html": "dash"}, remoteOptions{})
+	dest := filepath.Join(t.TempDir(), "clone")
+	if err := (&gitCLI{}).clone(context.Background(), r.URL, "main", "--stdin", dest, nil); err != nil {
+		t.Fatalf("clone: %v", err)
+	}
+	if got := readFile(t, filepath.Join(dest, "--stdin", "index.html")); got != "dash" {
+		t.Errorf("--stdin/index.html = %q", got)
+	}
 }
