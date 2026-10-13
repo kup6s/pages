@@ -192,9 +192,10 @@
       "properties": {
         "replicas": {
           "type": "integer",
-          "description": "Number of syncer replicas",
+          "description": "Number of syncer replicas (locks are in-process, more than one is unsupported)",
           "default": 1,
-          "minimum": 1
+          "minimum": 1,
+          "maximum": 1
         },
         "image": {
           "type": "object",
@@ -232,7 +233,7 @@
         },
         "gitTimeout": { "type": "string", "description": "Timeout for a single git operation", "default": "10m" },
         "minFreePercent": { "type": "number", "minimum": 0, "maximum": 100, "description": "Minimum free space on the sites volume in percent", "default": 10 },
-        "metricsPort": { "type": "integer", "description": "Syncer metrics port", "default": 9090 },
+        "metricsPort": { "type": "integer", "description": "Syncer metrics port", "default": 9090, "minimum": 1, "maximum": 65535 },
         "allowedHosts": {
           "type": "array",
           "description": "REQUIRED: Allowed Git hosts for SSRF protection",
