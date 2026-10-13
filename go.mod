@@ -1,8 +1,6 @@
 module github.com/kup6s/pages
 
-go 1.25.0
-
-toolchain go1.25.6
+go 1.26.0
 
 require (
 	github.com/go-git/go-git/v5 v5.19.1
