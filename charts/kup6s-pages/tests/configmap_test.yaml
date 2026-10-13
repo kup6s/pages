@@ -116,3 +116,9 @@ tests:
       - matchRegex:
           path: data["default.conf"]
           pattern: 'location ~ \(\^\|/\)\\\.git\(/\|\$\)'
+
+  - it: should deny git metadata before the asset rule inside location /
+    asserts:
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: 'location / \{[^}]*\n\s+location ~ \(\^\|/\)\\\.git\(/\|\$\) \{\s+return 404;\s+\}\s+[^}]*location ~\* \\\.\(js'
