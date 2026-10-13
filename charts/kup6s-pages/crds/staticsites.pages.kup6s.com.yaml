@@ -145,6 +145,9 @@ spec:
         - name: Status
           type: string
           jsonPath: .status.phase
+        - name: Synced
+          type: string
+          jsonPath: .status.conditions[?(@.type=="Synced")].status
         - name: Last Sync
           type: date
           jsonPath: .status.lastSync

@@ -267,8 +267,7 @@ func (r *StaticSiteReconciler) reconcileTLS(ctx context.Context, site *pagesv1.S
 
 // updateFinalStatus sets the final status fields and emits an event.
 func (r *StaticSiteReconciler) updateFinalStatus(ctx context.Context, site *pagesv1.StaticSite, domain string) (ctrl.Result, error) {
-	site.Status.Phase = pagesv1.PhaseReady
-	site.Status.Message = "Site configured, waiting for sync"
+	site.Status.Phase, site.Status.Message = syncPhase(site)
 	if site.Spec.PathPrefix != "" {
 		site.Status.URL = fmt.Sprintf("https://%s%s", domain, site.Spec.PathPrefix)
 	} else {
@@ -815,4 +814,19 @@ func (r *StaticSiteReconciler) mapCertificateToStaticSites(ctx context.Context, 
 	}
 
 	return requests
+}
+
+// syncPhase derives phase and message from the syncer-owned Synced condition.
+func syncPhase(site *pagesv1.StaticSite) (pagesv1.Phase, string) {
+	synced := meta.FindStatusCondition(site.Status.Conditions, pagesv1.ConditionSynced)
+	switch {
+	case synced == nil:
+		return pagesv1.PhasePending, "Waiting for first sync"
+	case synced.Status == metav1.ConditionTrue:
+		return pagesv1.PhaseReady, "Synced " + site.Status.LastCommit
+	case synced.Status == metav1.ConditionFalse:
+		return pagesv1.PhaseError, fmt.Sprintf("Sync failed: %s: %s", synced.Reason, synced.Message)
+	default:
+		return pagesv1.PhaseSyncing, "Syncing since " + synced.LastTransitionTime.UTC().Format(time.RFC3339)
+	}
 }
