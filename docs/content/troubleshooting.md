@@ -48,7 +48,7 @@ kubectl get events --field-selector involvedObject.name=<name>
 
 With `metrics.prometheusRule.enabled`, these alerts fire:
 
-- `PagesSiteSyncFailing`: the site has not been synced for 15 minutes.
+- `PagesSiteSyncFailing`: the site has not been synced for `metrics.prometheusRule.failingFor` (default 15m).
 - `PagesSiteSyncStale`: no successful sync for `staleAfterSeconds`, for example because the syncer is down.
 - `PagesVolumeLow`: the sites volume is running full.
 
@@ -80,7 +80,7 @@ Site shows 404 for all pages.
 
 **1. Verify the site directory exists:**
 ```bash
-kubectl exec -n kup6s-pages deploy/pages-syncer -- ls -la /sites/
+kubectl exec -n kup6s-pages $(kubectl get pod -n kup6s-pages -l app.kubernetes.io/component=syncer -o name) -- ls -la /sites/
 ```
 
 **2. Check if the repo was cloned successfully:**
@@ -136,7 +136,7 @@ Pushes to the repository don't trigger updates.
 
 **1. Check the syncer logs:**
 ```bash
-kubectl logs -n kup6s-pages -l app=pages-syncer
+kubectl logs -n kup6s-pages -l app.kubernetes.io/component=syncer
 ```
 
 **2. Verify webhook IngressRoute exists:**

@@ -199,7 +199,7 @@ For every StaticSite, at each interval:
 │                                                          │
 │  1. Parse Webhook Payload (repo URL, branch)             │
 │  2. Find all StaticSites with this repo URL              │
-│  3. git pull for each matching site                      │
+│  3. Sync each matching site (fetch + reset, or re-clone)  │
 │  4. Status Update                                        │
 │                                                          │
 └──────────────────────────────────────────────────────────┘
