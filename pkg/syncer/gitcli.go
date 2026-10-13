@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -117,9 +118,17 @@ func (g *gitCLI) inspect(ctx context.Context, dir string) (cloneInfo, error) {
 		return cloneInfo{}, err
 	}
 	if sparse == "true" {
-		if info.SparsePath, err = g.run(ctx, dir, "", nil, "sparse-checkout", "list"); err != nil {
+		listed, err := g.run(ctx, dir, "", nil, "sparse-checkout", "list")
+		if err != nil {
 			return cloneInfo{}, err
 		}
+		// git C-quotes paths containing a double quote or control characters.
+		if strings.HasPrefix(listed, `"`) {
+			if listed, err = strconv.Unquote(listed); err != nil {
+				return cloneInfo{}, fmt.Errorf("sparse path %q: %w", listed, err)
+			}
+		}
+		info.SparsePath = listed
 	}
 	return info, nil
 }
@@ -150,7 +159,7 @@ func (g *gitCLI) run(ctx context.Context, dir, repoURL string, auth *gitAuth, ar
 		bin = "git"
 	}
 	// Redirects would carry the credentials, and the request, to another host.
-	full := append([]string{"-c", "http.followRedirects=false"}, args...)
+	full := append([]string{"-c", "http.followRedirects=false", "-c", "core.quotePath=false"}, args...)
 	cmd := exec.CommandContext(ctx, bin, full...)
 	// git spawns helpers (git-remote-https, index-pack) that hold the output
 	// pipes open; kill the whole process group so the timeout really bounds git.
@@ -246,4 +255,16 @@ func truncate(s string, max int) string {
 		return s
 	}
 	return s[:max] + "…"
+}
+
+// isLockError reports whether git failed on a stale lock file that an
+// interrupted earlier run left behind.
+func isLockError(err error) bool {
+	var gerr *gitError
+	if !errors.As(err, &gerr) {
+		return false
+	}
+	return strings.Contains(gerr.Stderr, ".lock': File exists") ||
+		strings.Contains(gerr.Stderr, "cannot lock ref") ||
+		(strings.Contains(gerr.Stderr, "Unable to create") && strings.Contains(gerr.Stderr, ".lock"))
 }

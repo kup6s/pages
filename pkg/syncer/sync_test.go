@@ -406,3 +406,47 @@ func TestSyncSite_MissingBranchKeepsServedContent(t *testing.T) {
 	}
 	assertNoTempEntries(t, s)
 }
+
+func TestSyncSite_RecloneAfterStaleFetchLock(t *testing.T) {
+	for _, lock := range []string{"shallow.lock", "refs/remotes/origin/main.lock"} {
+		t.Run(lock, func(t *testing.T) {
+			r := newTestRemote(t, archiveFiles, remoteOptions{})
+			s := newTestSyncer(t, r)
+			site := testSite(r, "/2018")
+			mustSync(t, s, site)
+			markClone(t, s)
+			if err := os.WriteFile(filepath.Join(s.repoDir("site"), ".git", lock), nil, 0o644); err != nil {
+				t.Fatal(err)
+			}
+
+			r.commit(map[string]string{"2018/index.html": "2018 v2"}, "v2")
+			mustSync(t, s, site)
+			if !cloneReplaced(s) {
+				t.Error("stale lock did not cause a re-clone")
+			}
+			if got := servedFile(t, s, "index.html"); got != "2018 v2" {
+				t.Errorf("served %q", got)
+			}
+			assertNoTempEntries(t, s)
+		})
+	}
+}
+
+func TestSyncSite_NonAsciiAndQuotedPathsDoNotReclone(t *testing.T) {
+	for _, dir := range []string{"übersicht", `quo"te`} {
+		t.Run(dir, func(t *testing.T) {
+			r := newTestRemote(t, map[string]string{dir + "/index.html": "special"}, remoteOptions{})
+			s := newTestSyncer(t, r)
+			site := testSite(r, "/"+dir)
+			mustSync(t, s, site)
+			markClone(t, s)
+			mustSync(t, s, site)
+			if cloneReplaced(s) {
+				t.Errorf("path %q re-cloned on the second sync", dir)
+			}
+			if got := servedFile(t, s, "index.html"); got != "special" {
+				t.Errorf("served %q", got)
+			}
+		})
+	}
+}

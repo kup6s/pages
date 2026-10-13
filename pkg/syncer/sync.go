@@ -162,6 +162,10 @@ func (s *Syncer) syncRepo(ctx context.Context, site *staticSiteData, subpath str
 
 	before, _ := s.git().head(ctx, dir)
 	if err := s.git().fetch(ctx, dir, site.Repo, site.Branch, auth); err != nil {
+		if isLockError(err) {
+			logger.Info("Fetch blocked by a stale lock, cloning again", "site", site.Name, "error", err.Error())
+			return s.recloneSite(ctx, site, subpath, auth)
+		}
 		return "", classifyGitError(pagesv1.SyncReasonFetchFailed, err)
 	}
 	if err := s.git().resetHard(ctx, dir, site.Repo, site.Branch, auth); err != nil {

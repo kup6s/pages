@@ -233,3 +233,39 @@ func TestGitCLI_SubpathStartingWithDashIsNotAnOption(t *testing.T) {
 		t.Errorf("--stdin/index.html = %q", got)
 	}
 }
+
+func TestGitCLI_InspectUnquotesSparsePath(t *testing.T) {
+	for _, subpath := range []string{"übersicht", `quo"te`, "with space"} {
+		t.Run(subpath, func(t *testing.T) {
+			r := newTestRemote(t, map[string]string{subpath + "/index.html": "x"}, remoteOptions{})
+			g := &gitCLI{}
+			dest := filepath.Join(t.TempDir(), "clone")
+			if err := g.clone(context.Background(), r.URL, "main", subpath, dest, nil); err != nil {
+				t.Skipf("git does not accept %q in cone mode: %v", subpath, err)
+			}
+			info, err := g.inspect(context.Background(), dest)
+			if err != nil {
+				t.Fatalf("inspect: %v", err)
+			}
+			if info.SparsePath != subpath {
+				t.Errorf("SparsePath = %q, want %q", info.SparsePath, subpath)
+			}
+		})
+	}
+}
+
+func TestIsLockError(t *testing.T) {
+	for stderr, want := range map[string]bool{
+		"fatal: Unable to create '/x/.git/shallow.lock': File exists.":                  true,
+		"error: cannot lock ref 'refs/remotes/origin/main': Unable to create '/x.lock'": true,
+		"fatal: unable to access 'https://h/r.git/': Could not resolve host: h":         false,
+		"fatal: couldn't find remote ref main":                                          false,
+	} {
+		if got := isLockError(&gitError{Stderr: stderr}); got != want {
+			t.Errorf("isLockError(%q) = %v, want %v", stderr, got, want)
+		}
+	}
+	if isLockError(errors.New("plain")) {
+		t.Error("non-git error counted as lock error")
+	}
+}
