@@ -172,7 +172,7 @@ A crash-looping syncer is covered by `KubePodCrashLooping` from kube-prometheus-
 ### 6. nginx, chart, docs
 
 - nginx: `location ~ (^|/)\.git(/|$) { return 404; }`. Other dotfiles such as `.well-known` stay reachable.
-- Chart values: `syncer.gitTimeout`, `syncer.minFreePercent`, `syncer.metricsPort`, `metrics.podMonitor.*`, `metrics.prometheusRule.*`. The syncer memory limit stays `256Mi`; the values documentation states that sites with `path: /` and repositories above about 1 GB need more.
+- Chart values: `syncer.gitTimeout`, `syncer.minFreePercent`, `syncer.metricsPort`, `metrics.podMonitor.*`, `metrics.prometheusRule.*`. The syncer settings are rendered into the container `args` as `--git-timeout`, `--min-free-percent` and `--metrics-addr`, like the existing `--sync-interval`; environment variables stay reserved for secrets. The syncer memory limit stays `256Mi`; the values documentation states that sites with `path: /` and repositories above about 1 GB need more.
 - Docs:
   - `architecture.md`: sync flow and directory layout.
   - `troubleshooting.md`: `Synced` reasons, automatic recovery, alerts.
