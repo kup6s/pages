@@ -4,6 +4,7 @@ package syncer
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -102,4 +103,127 @@ func checkSubpath(repo, subpath string) error {
 			fmt.Errorf("subpath %q does not exist in repository", subpath))
 	}
 	return nil
+}
+
+// recloneSlackBytes is the allowance on top of twice the checkout size.
+// git gc never prunes promisor packs, so an overgrown clone is replaced.
+var recloneSlackBytes int64 = 50 << 20
+
+// syncSite brings one site to the head of its branch and reports the result.
+func (s *Syncer) syncSite(ctx context.Context, site *staticSiteData) error {
+	commit, err := s.syncSiteContent(ctx, site)
+	if err != nil {
+		s.updateStatus(ctx, site, "Error", err.Error(), "")
+		return err
+	}
+	s.updateStatus(ctx, site, "Ready", "Synced successfully", commit)
+	log.FromContext(ctx).Info("Sync complete", "site", site.Name, "commit", commit)
+	return nil
+}
+
+func (s *Syncer) syncSiteContent(ctx context.Context, site *staticSiteData) (string, error) {
+	if err := s.validateRepoURL(site.Repo); err != nil {
+		return "", newSyncError(pagesv1.SyncReasonInvalidSpec, fmt.Errorf("repo URL validation failed: %w", err))
+	}
+	subpath, err := normalizeSubpath(site.Path)
+	if err != nil {
+		return "", newSyncError(pagesv1.SyncReasonInvalidSpec, err)
+	}
+	auth, err := s.siteAuth(ctx, site)
+	if err != nil {
+		return "", newSyncError(pagesv1.SyncReasonAuthFailed, fmt.Errorf("failed to get git credentials: %w", err))
+	}
+	return s.syncRepo(ctx, site, subpath, auth)
+}
+
+// siteAuth reads the site's git credentials; nil means anonymous access.
+func (s *Syncer) siteAuth(ctx context.Context, site *staticSiteData) (*gitAuth, error) {
+	if site.SecretRef == nil {
+		return nil, nil
+	}
+	password, err := s.getSecretValue(ctx, site.Namespace, site.SecretRef.Name, site.SecretRef.Key)
+	if err != nil {
+		return nil, err
+	}
+	username, _ := s.getSecretValue(ctx, site.Namespace, site.SecretRef.Name, "username")
+	if username == "" {
+		username = "git"
+	}
+	return &gitAuth{Username: username, Password: password}, nil
+}
+
+// syncRepo updates a usable clone in place and replaces anything else.
+func (s *Syncer) syncRepo(ctx context.Context, site *staticSiteData, subpath string, auth *gitAuth) (string, error) {
+	logger := log.FromContext(ctx)
+	dir := s.repoDir(site.Name)
+	if !s.cloneUsable(ctx, dir, site, subpath) {
+		return s.recloneSite(ctx, site, subpath, auth)
+	}
+
+	before, _ := s.git().head(ctx, dir)
+	if err := s.git().fetch(ctx, dir, site.Repo, site.Branch, auth); err != nil {
+		return "", classifyGitError(pagesv1.SyncReasonFetchFailed, err)
+	}
+	if err := s.git().resetHard(ctx, dir, site.Repo, site.Branch, auth); err != nil {
+		logger.Info("Reset failed, cloning again", "site", site.Name, "error", err.Error())
+		return s.recloneSite(ctx, site, subpath, auth)
+	}
+	after, err := s.git().head(ctx, dir)
+	if err != nil {
+		return s.recloneSite(ctx, site, subpath, auth)
+	}
+	if after != before && cloneOvergrown(dir) {
+		logger.Info("Clone outgrew its checkout, cloning again", "site", site.Name)
+		return s.recloneSite(ctx, site, subpath, auth)
+	}
+	if err := checkSubpath(dir, subpath); err != nil {
+		return "", err
+	}
+	if err := s.linkSite(site.Name, subpath); err != nil {
+		return "", newSyncError(pagesv1.SyncReasonSyncFailed, err)
+	}
+	return after, nil
+}
+
+func (s *Syncer) recloneSite(ctx context.Context, site *staticSiteData, subpath string, auth *gitAuth) (string, error) {
+	if err := s.cloneSite(ctx, site, subpath, auth); err != nil {
+		return "", err
+	}
+	commit, err := s.git().head(ctx, s.repoDir(site.Name))
+	if err != nil {
+		return "", newSyncError(pagesv1.SyncReasonCloneFailed, err)
+	}
+	return commit, nil
+}
+
+// cloneUsable reports whether dir is a complete clone of the site's spec.
+func (s *Syncer) cloneUsable(ctx context.Context, dir string, site *staticSiteData, subpath string) bool {
+	if _, err := os.Stat(filepath.Join(dir, ".git", markerFile)); err != nil {
+		return false
+	}
+	info, err := s.git().inspect(ctx, dir)
+	if err != nil {
+		return false
+	}
+	return info.OriginURL == site.Repo && info.Branch == site.Branch && info.SparsePath == subpath
+}
+
+func cloneOvergrown(dir string) bool {
+	gitSize := dirSize(filepath.Join(dir, ".git"))
+	checkout := dirSize(dir) - gitSize
+	return gitSize > 2*checkout+recloneSlackBytes
+}
+
+func dirSize(root string) int64 {
+	var size int64
+	_ = filepath.WalkDir(root, func(_ string, d fs.DirEntry, err error) error {
+		if err != nil || !d.Type().IsRegular() {
+			return nil
+		}
+		if info, err := d.Info(); err == nil {
+			size += info.Size()
+		}
+		return nil
+	})
+	return size
 }
