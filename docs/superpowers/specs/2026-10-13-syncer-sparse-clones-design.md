@@ -1,6 +1,6 @@
 # Syncer: sparse partial clones, recovery, status ownership, observability
 
-Issue: #153. Follow-up: #157 (atomic content swap).
+Issue: #153. Follow-ups: #157 (atomic content swap), #158 (name collisions across namespaces).
 
 ## Goal
 
@@ -47,7 +47,7 @@ Every update keeps the previous blobs: ten updates of 10 MB grew `.git` from 24 
 6. **The controller is the single writer of `phase` and `message`.** The syncer owns the `Synced` condition, `lastSync` and `lastCommit`.
 7. **Per-site state metrics come from the operator,** not the syncer, so they survive syncer crashes.
 8. **Atomic content swap is out of scope** (#157). Updates still reset the served checkout in place, as today.
-9. **Name collisions across namespaces are out of scope.** `/sites/<name>` stays keyed by name; fixing it changes routing and gets its own issue.
+9. **Name collisions across namespaces are out of scope.** `/sites/<name>` stays keyed by name; fixing it changes routing and is tracked in #158.
 
 ## Design
 
@@ -201,5 +201,5 @@ A crash-looping syncer is covered by `KubePodCrashLooping` from kube-prometheus-
 ## Out of scope
 
 - Atomic content swap (#157).
-- Name collisions across namespaces (separate issue).
+- Name collisions across namespaces (#158).
 - Enabling PodMonitors and rules on kup6s (dp-infra, after the release).
