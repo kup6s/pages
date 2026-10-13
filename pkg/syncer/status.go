@@ -3,6 +3,7 @@ package syncer
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -16,7 +17,10 @@ import (
 	pagesv1 "github.com/kup6s/pages/pkg/apis/v1beta1"
 )
 
-const maxConditionMessage = 1024
+const (
+	maxConditionMessage = 1024
+	maxEventNote        = 1024
+)
 
 // reportStatus records a sync result and logs instead of failing the sync.
 func (s *Syncer) reportStatus(ctx context.Context, site *staticSiteData, cond metav1.Condition, commit string) {
@@ -76,7 +80,8 @@ func (s *Syncer) recordTransition(obj runtime.Object, wasFailing bool, cond meta
 	}
 	switch {
 	case cond.Status == metav1.ConditionFalse && !wasFailing:
-		s.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, "SyncFailed", "Sync", "%s: %s", cond.Reason, cond.Message)
+		note := truncate(fmt.Sprintf("%s: %s", cond.Reason, cond.Message), maxEventNote)
+		s.Recorder.Eventf(obj, nil, corev1.EventTypeWarning, "SyncFailed", "Sync", "%s", note)
 	case cond.Status == metav1.ConditionTrue && wasFailing:
 		s.Recorder.Eventf(obj, nil, corev1.EventTypeNormal, "SyncRecovered", "Sync", "Synced %s", commit)
 	}

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -181,5 +182,60 @@ func TestSyncSite_ReportsFailureReason(t *testing.T) {
 	got := meta.FindStatusCondition(conds, pagesv1.ConditionSynced)
 	if got == nil || got.Status != metav1.ConditionFalse || got.Reason != pagesv1.SyncReasonCloneFailed {
 		t.Errorf("Synced = %+v, want False/CloneFailed", got)
+	}
+}
+
+func TestTruncate(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		max  int
+	}{
+		{"short unchanged", "hello", 10},
+		{"exact length unchanged", "hello", 5},
+		{"long ascii", strings.Repeat("a", 3000), 1024},
+		{"multi-byte runes", strings.Repeat("ü", 2000), 1024},
+		{"three-byte runes", strings.Repeat("€", 2000), 1024},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := truncate(tt.in, tt.max)
+			if len(got) > tt.max || !utf8.ValidString(got) {
+				t.Fatalf("len=%d valid=%v, want <= %d and valid", len(got), utf8.ValidString(got), tt.max)
+			}
+			if len(tt.in) <= tt.max {
+				if got != tt.in {
+					t.Errorf("got %q, want unchanged", got)
+				}
+				return
+			}
+			if !strings.HasSuffix(got, "…") {
+				t.Errorf("missing ellipsis suffix")
+			}
+		})
+	}
+	if got := truncate(strings.Repeat("a", 3000), 1024); len(got) != 1024 {
+		t.Errorf("ascii len = %d, want exactly 1024", len(got))
+	}
+}
+
+func TestSetSynced_LongMessageStaysWithinLimits(t *testing.T) {
+	c := newStatusClient(t)
+	rec := events.NewFakeRecorder(10)
+	s := &Syncer{DynamicClient: c, Recorder: rec}
+	long := strings.Repeat("ü", 1500)
+
+	if err := s.setSynced(context.Background(), statusSite, synced(metav1.ConditionFalse, pagesv1.SyncReasonCloneFailed, long), ""); err != nil {
+		t.Fatal(err)
+	}
+	conds, _ := storedConditions(t, c)
+	if msg := meta.FindStatusCondition(conds, pagesv1.ConditionSynced).Message; len(msg) > 1024 || !utf8.ValidString(msg) {
+		t.Errorf("condition message len=%d valid=%v", len(msg), utf8.ValidString(msg))
+	}
+	note := <-rec.Events
+	// FakeRecorder prefixes "<type> <reason> "; the note itself is the rest.
+	note = strings.TrimPrefix(note, "Warning SyncFailed ")
+	if len(note) > 1024 || !utf8.ValidString(note) {
+		t.Errorf("event note len=%d valid=%v", len(note), utf8.ValidString(note))
 	}
 }

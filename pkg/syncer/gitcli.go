@@ -15,6 +15,7 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode/utf8"
 )
 
 const maxGitStderr = 2048
@@ -250,11 +251,21 @@ func isAuthError(err error) bool {
 	return false
 }
 
+// truncate shortens s to at most max bytes including the ellipsis, without
+// splitting a UTF-8 rune.
 func truncate(s string, max int) string {
+	const ellipsis = "…"
 	if len(s) <= max {
 		return s
 	}
-	return s[:max] + "…"
+	cut := max - len(ellipsis)
+	if cut < 0 {
+		cut = 0
+	}
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut] + ellipsis
 }
 
 // isLockError reports whether git failed on a stale lock file that an
