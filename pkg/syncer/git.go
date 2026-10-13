@@ -55,6 +55,12 @@ type Syncer struct {
 	// AllowedHosts is a list of allowed Git hosts (SSRF protection).
 	// This field is mandatory - startup will fail if empty.
 	AllowedHosts []string
+
+	// GitTimeout bounds every git invocation; zero means no limit.
+	GitTimeout time.Duration
+
+	// Git overrides the git wrapper (tests); nil uses git from PATH.
+	Git *gitCLI
 }
 
 // validateRepoURL checks if the repo URL is allowed (SSRF protection)
