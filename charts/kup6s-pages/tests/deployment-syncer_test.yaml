@@ -14,6 +14,9 @@ tests:
       - equal:
           path: spec.replicas
           value: 1
+      - equal:
+          path: spec.strategy.type
+          value: Recreate
       - matchRegex:
           path: spec.template.spec.containers[0].image
           pattern: ^ghcr\.io/kup6s/pages-syncer:.+$
@@ -95,3 +98,9 @@ tests:
             name: metrics
             containerPort: 9090
             protocol: TCP
+
+  - it: should reject more than one replica
+    set:
+      syncer.replicas: 2
+    asserts:
+      - failedTemplate: {}

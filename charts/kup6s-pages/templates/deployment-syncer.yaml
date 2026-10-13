@@ -11,6 +11,10 @@ metadata:
     {{- include "kup6s-pages.syncer.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.syncer.replicas }}
+  # Locks are in-process and each pod sweeps leftover temp clones, so two
+  # syncers must never overlap, not even during a rollout.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "kup6s-pages.syncer.selectorLabels" . | nindent 6 }}

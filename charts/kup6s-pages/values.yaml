@@ -126,7 +126,8 @@ operator:
 # Syncer Configuration
 # =============================================================================
 syncer:
-  # -- Number of syncer replicas (usually 1 to avoid conflicts)
+  # -- Number of syncer replicas. Must be 1: locks are in-process and each pod
+  # removes the other's temporary clones.
   replicas: 1
 
   image:
