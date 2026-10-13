@@ -7,19 +7,56 @@ weight: 40
 
 Common issues and solutions.
 
-## Site Stuck in "Pending"
+## Site Stuck in "Pending" or "Syncing"
 
-The site was created but never transitions to "Ready".
+`Pending` means the syncer has not reported a result yet.
+`Syncing` means a clone is running.
+Check the `Synced` condition:
 
-**Check the Syncer logs:**
 ```bash
-kubectl logs -n kup6s-pages -l app=pages-syncer
+kubectl get staticsite <name> -o jsonpath='{.status.conditions[?(@.type=="Synced")]}'
+kubectl -n kup6s-pages logs -l app.kubernetes.io/component=syncer --tail=100
 ```
 
-**Common causes:**
-- Git host not in `allowedHosts` (SSRF protection)
-- Repository URL invalid or inaccessible
-- Network issues reaching the Git host
+A site that stays `Syncing` for a long time while the syncer pod restarts was most likely killed during the clone.
+Look for `OOMKilled` in `kubectl -n kup6s-pages describe pod -l app.kubernetes.io/component=syncer`.
+See "Sync Failures" below.
+
+## Sync Failures
+
+The syncer sets `Synced=False` with one of these reasons.
+The site keeps serving its last good content.
+
+| Reason | Meaning | What to do |
+|---|---|---|
+| `CloneFailed` | `git clone` failed, for example because of an unknown branch, an unreachable host or a redirected URL | Check `spec.branch` and `spec.repo`. The message contains git's error. git does not follow HTTP redirects, so use the final URL of the repository, for example after a project rename or with the `.git` suffix some servers require |
+| `FetchFailed` | Updating an existing clone failed | Usually network or server trouble. The syncer retries every interval |
+| `AuthFailed` | The secret is missing or the server rejected the credentials | See "Private Repo Authentication Fails" |
+| `SubpathMissing` | `spec.path` does not exist on the branch | Fix `spec.path` |
+| `DiskFull` | The sites volume has less free space than `--min-free-percent` | Grow the PVC or remove unused sites |
+| `Timeout` | A git operation took longer than `--git-timeout` | Raise `syncer.gitTimeout` for very large repositories |
+| `InvalidSpec` | `repo` is not allowed by `--allowed-hosts`, or `path` is invalid | Fix the StaticSite |
+
+Broken or interrupted clones need no manual cleanup.
+The syncer detects them, including a lock file left by a fetch that timed out or was killed, deletes the leftovers, and clones again on the next sync.
+
+The syncer emits a `SyncFailed` event when a site starts failing and a `SyncRecovered` event when it recovers:
+
+```bash
+kubectl get events --field-selector involvedObject.name=<name>
+```
+
+With `metrics.prometheusRule.enabled`, these alerts fire:
+
+- `PagesSiteSyncFailing`: the site has not been synced for 15 minutes.
+- `PagesSiteSyncStale`: no successful sync for `staleAfterSeconds`, for example because the syncer is down.
+- `PagesVolumeLow`: the sites volume is running full.
+
+### Syncer Runs Out of Memory
+
+Sites with a `path` need little memory, because only that directory is downloaded.
+Sites with `path: /` and repositories above about 1 GB can exceed the default limit of 256Mi.
+Raise `syncer.resources.limits.memory`.
 
 ## Certificate Not Ready
 

@@ -79,6 +79,11 @@ The syncer has minimal permissions - read-only access to StaticSites plus status
 # StaticSites: read-only + status
 verbs: ["get", "list", "watch"]  # for staticsites
 verbs: ["get", "update", "patch"]  # for staticsites/status
+
+# Events: SyncFailed / SyncRecovered
+- apiGroups: ["events.k8s.io"]
+  resources: ["events"]
+  verbs: ["create", "patch"]
 ```
 
 Secrets access is **not granted by default**. Users must create namespace-scoped Roles
@@ -158,3 +163,11 @@ For environments requiring additional restrictions:
    root filesystem
 4. **Traefik namespace filtering**: Configure Traefik to only watch IngressRoutes
    in the system namespace for additional isolation
+5. **Git credentials** never reach the command line or `.git/config`.
+   The syncer passes them to git as an environment-only `http.<origin>.extraHeader` entry, scoped to the repository's scheme and host, so git does not send them to other hosts.
+   git also never follows HTTP redirects, which keeps credentials on the origin host.
+   A repository URL that redirects fails with `CloneFailed`, so configure the final URL.
+6. **git runs isolated** from system and user configuration (`GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_GLOBAL=/dev/null`), never prompts, and may only use `http` and `https`.
+7. **nginx never serves `.git`**: requests for a `.git` file or directory return 404.
+8. **No shared clones**: every StaticSite has its own clone and credentials.
+   Content of one site's repository is never served to another.

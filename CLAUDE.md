@@ -47,7 +47,7 @@ helm install pages oci://ghcr.io/kup6s/kup6s-pages
 
 ## Dependencies
 
-- Go, controller-runtime, go-git (see go.mod for versions)
+- Go, controller-runtime, git CLI in the syncer image (see go.mod and Dockerfile.syncer)
 - Requires: Traefik, cert-manager, RWX StorageClass
 
 # Issues/ Commits
