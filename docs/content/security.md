@@ -170,4 +170,3 @@ For environments requiring additional restrictions:
 6. **git runs isolated** from system and user configuration (`GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_GLOBAL=/dev/null`), never prompts, and may only use `http` and `https`.
 7. **nginx never serves `.git`**: requests for a `.git` file or directory return 404.
 8. **No shared clones**: every StaticSite has its own clone and credentials.
-   Content of one site's repository is never served to another.
