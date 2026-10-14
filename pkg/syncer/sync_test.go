@@ -415,7 +415,13 @@ func TestSyncSite_RecloneAfterStaleFetchLock(t *testing.T) {
 			site := testSite(r, "/2018")
 			mustSync(t, s, site)
 			markClone(t, s)
-			if err := os.WriteFile(filepath.Join(s.repoDir("site"), ".git", lock), nil, 0o644); err != nil {
+			lockPath := filepath.Join(s.repoDir("site"), ".git", lock)
+			// Newer git writes the refs of a fresh single-branch clone to packed-refs,
+			// so refs/remotes/origin may not exist yet.
+			if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(lockPath, nil, 0o644); err != nil {
 				t.Fatal(err)
 			}
 
