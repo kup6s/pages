@@ -884,3 +884,45 @@ func TestHandleGitHubWebhook_BranchMismatch(t *testing.T) {
 		t.Errorf("status = %d, want %d", rr.Code, http.StatusOK)
 	}
 }
+
+// A webhook sender that gives up must not abort the sync halfway: the sync
+// runs detached from the request context.
+func TestHandleSync_ClientDisconnectDoesNotAbortSync(t *testing.T) {
+	r := newTestRemote(t, map[string]string{"index.html": "hi"}, remoteOptions{})
+	s := newTestSyncer(t, r)
+	s.DynamicClient = &fakeDynamicClientWithSites{
+		sites: []siteSpec{{name: "site", namespace: "default", repo: r.URL}},
+	}
+	w := &WebhookServer{Syncer: s}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	req := httptest.NewRequest("POST", "/sync/default/site", nil)
+	rr := httptest.NewRecorder()
+	w.handleSync(ctx, rr, req, "default", "site")
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", rr.Code, rr.Body.String())
+	}
+	if got := servedFile(t, s, "index.html"); got != "hi" {
+		t.Errorf("served %q", got)
+	}
+}
+
+func TestSyncByRepo_ClientDisconnectDoesNotAbortSync(t *testing.T) {
+	r := newTestRemote(t, map[string]string{"index.html": "hi"}, remoteOptions{})
+	s := newTestSyncer(t, r)
+	s.DynamicClient = &fakeDynamicClientWithSites{
+		sites: []siteSpec{{name: "site", namespace: "default", repo: r.URL}},
+	}
+	w := &WebhookServer{Syncer: s}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := w.syncByRepo(ctx, r.URL, "main"); err != nil {
+		t.Fatal(err)
+	}
+	if got := servedFile(t, s, "index.html"); got != "hi" {
+		t.Errorf("served %q", got)
+	}
+}

@@ -2,7 +2,6 @@ package syncer
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,11 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/object"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+
+	pagesv1 "github.com/kup6s/pages/pkg/apis/v1beta1"
 )
 
 func TestValidateRepoURL(t *testing.T) {
@@ -273,127 +271,6 @@ func TestStaticSiteDataFromUnstructured(t *testing.T) {
 	}
 }
 
-func TestSetupSubpath(t *testing.T) {
-	// Create temp directory
-	tmpDir, err := os.MkdirTemp("", "syncer-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	s := &Syncer{SitesRoot: tmpDir}
-
-	tests := []struct {
-		name      string
-		siteName  string
-		subpath   string
-		setup     func() string // returns repoDir
-		wantErr   bool
-		checkLink bool
-	}{
-		{
-			name:     "creates symlink for valid subpath",
-			siteName: "mysite",
-			subpath:  "dist",
-			setup: func() string {
-				repoDir := filepath.Join(tmpDir, ".repos", "mysite")
-				_ = os.MkdirAll(filepath.Join(repoDir, "dist"), 0755)
-				return repoDir
-			},
-			wantErr:   false,
-			checkLink: true,
-		},
-		{
-			name:     "subpath with leading slash",
-			siteName: "site2",
-			subpath:  "/public",
-			setup: func() string {
-				repoDir := filepath.Join(tmpDir, ".repos", "site2")
-				_ = os.MkdirAll(filepath.Join(repoDir, "public"), 0755)
-				return repoDir
-			},
-			wantErr:   false,
-			checkLink: true,
-		},
-		{
-			name:     "error on non-existent subpath",
-			siteName: "badsite",
-			subpath:  "nonexistent",
-			setup: func() string {
-				repoDir := filepath.Join(tmpDir, ".repos", "badsite")
-				_ = os.MkdirAll(repoDir, 0755)
-				return repoDir
-			},
-			wantErr:   true,
-			checkLink: false,
-		},
-		{
-			name:     "replaces existing symlink",
-			siteName: "replace",
-			subpath:  "new",
-			setup: func() string {
-				repoDir := filepath.Join(tmpDir, ".repos", "replace")
-				_ = os.MkdirAll(filepath.Join(repoDir, "old"), 0755)
-				_ = os.MkdirAll(filepath.Join(repoDir, "new"), 0755)
-				// Create old symlink
-				linkPath := filepath.Join(tmpDir, "replace")
-				_ = os.Symlink(filepath.Join(repoDir, "old"), linkPath)
-				return repoDir
-			},
-			wantErr:   false,
-			checkLink: true,
-		},
-		{
-			name:     "handles root path (just slash)",
-			siteName: "rootsite",
-			subpath:  "/",
-			setup: func() string {
-				repoDir := filepath.Join(tmpDir, ".repos", "rootsite")
-				_ = os.MkdirAll(repoDir, 0755)
-				return repoDir
-			},
-			wantErr:   false,
-			checkLink: true,
-		},
-		{
-			name:     "handles empty subpath as root",
-			siteName: "emptysite",
-			subpath:  "",
-			setup: func() string {
-				repoDir := filepath.Join(tmpDir, ".repos", "emptysite")
-				_ = os.MkdirAll(repoDir, 0755)
-				return repoDir
-			},
-			wantErr:   false,
-			checkLink: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			repoDir := tt.setup()
-			err := s.setupSubpath(tt.siteName, repoDir, tt.subpath)
-
-			if (err != nil) != tt.wantErr {
-				t.Errorf("setupSubpath() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-
-			if tt.checkLink {
-				linkPath := filepath.Join(tmpDir, tt.siteName)
-				info, err := os.Lstat(linkPath)
-				if err != nil {
-					t.Errorf("symlink not created: %v", err)
-					return
-				}
-				if info.Mode()&os.ModeSymlink == 0 {
-					t.Errorf("expected symlink, got %v", info.Mode())
-				}
-			}
-		})
-	}
-}
-
 func TestRemovePathOrSymlink(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "syncer-remove-test-*")
 	if err != nil {
@@ -559,104 +436,6 @@ func TestDeleteSite(t *testing.T) {
 			repoPath := filepath.Join(tmpDir, ".repos", tt.siteName)
 			if _, err := os.Stat(repoPath); !os.IsNotExist(err) {
 				t.Errorf("repo path still exists: %s", repoPath)
-			}
-		})
-	}
-}
-
-func TestUpdateStatusJSONEscaping(t *testing.T) {
-	tests := []struct {
-		name    string
-		phase   string
-		message string
-		commit  string
-	}{
-		{
-			name:    "simple message",
-			phase:   "Ready",
-			message: "Synced successfully",
-			commit:  "abc123",
-		},
-		{
-			name:    "message with quotes",
-			phase:   "Error",
-			message: `Failed: "invalid" config`,
-			commit:  "",
-		},
-		{
-			name:    "message with newlines",
-			phase:   "Error",
-			message: "Line 1\nLine 2\nLine 3",
-			commit:  "",
-		},
-		{
-			name:    "message with backslashes",
-			phase:   "Error",
-			message: `Path: C:\Users\test`,
-			commit:  "",
-		},
-		{
-			name:    "message with special chars",
-			phase:   "Error",
-			message: "Error: {\"code\": 500, \"msg\": \"fail\"}",
-			commit:  "",
-		},
-		{
-			name:    "message with tabs and unicode",
-			phase:   "Error",
-			message: "Tab:\there, Unicode: \u2603",
-			commit:  "",
-		},
-		{
-			name:    "message with control characters",
-			phase:   "Error",
-			message: "Control: \x1f and null: \x00",
-			commit:  "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			fakeClient := &fakeDynamicClient{activeSites: []string{"test-site"}}
-			s := &Syncer{
-				DynamicClient: fakeClient,
-			}
-
-			site := &staticSiteData{
-				Name:      "test-site",
-				Namespace: "default",
-			}
-
-			ctx := context.Background()
-			s.updateStatus(ctx, site, tt.phase, tt.message, tt.commit)
-
-			// Verify the patch is valid JSON
-			if fakeClient.lastPatch == nil {
-				t.Fatal("no patch was sent")
-			}
-
-			var parsed map[string]interface{}
-			if err := json.Unmarshal(fakeClient.lastPatch, &parsed); err != nil {
-				t.Fatalf("patch is not valid JSON: %v\npatch: %s", err, string(fakeClient.lastPatch))
-			}
-
-			// Verify the status fields
-			status, ok := parsed["status"].(map[string]interface{})
-			if !ok {
-				t.Fatalf("status field missing or invalid: %v", parsed)
-			}
-
-			if got := status["phase"]; got != tt.phase {
-				t.Errorf("phase = %v, want %v", got, tt.phase)
-			}
-			if got := status["message"]; got != tt.message {
-				t.Errorf("message = %v, want %v", got, tt.message)
-			}
-			if got := status["lastCommit"]; got != tt.commit {
-				t.Errorf("lastCommit = %v, want %v", got, tt.commit)
-			}
-			if _, ok := status["lastSync"]; !ok {
-				t.Error("lastSync field missing")
 			}
 		})
 	}
@@ -869,99 +648,7 @@ func TestSyncSite_CloneFailure(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for clone failure, got nil")
 	}
-	if !strings.Contains(err.Error(), "git clone failed") {
-		t.Errorf("unexpected error message: %v", err)
-	}
-}
-
-func TestSyncSite_PullFailure(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "syncer-pull-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	// Create a fake .git directory to simulate an existing repo
-	siteDir := filepath.Join(tmpDir, "test-site")
-	gitDir := filepath.Join(siteDir, ".git")
-	if err := os.MkdirAll(gitDir, 0755); err != nil {
-		t.Fatalf("failed to create fake git dir: %v", err)
-	}
-
-	s := &Syncer{
-		SitesRoot:     tmpDir,
-		AllowedHosts:  []string{"invalid.test"},
-		DynamicClient: &fakeDynamicClient{activeSites: []string{"test-site"}},
-		ClientSet:     newFakeClientset(),
-	}
-
-	site := &staticSiteData{
-		Name:      "test-site",
-		Namespace: "default",
-		Repo:      "https://invalid.test/nonexistent/repo.git",
-		Branch:    "main",
-		Path:      "/",
-	}
-
-	ctx := context.Background()
-	err = s.syncSite(ctx, site)
-
-	if err == nil {
-		t.Error("expected error for pull failure, got nil")
-	}
-	// The error could be "failed to open repo" since it's not a real git repo
-	if !strings.Contains(err.Error(), "failed to open repo") && !strings.Contains(err.Error(), "git fetch failed") {
-		t.Errorf("unexpected error message: %v", err)
-	}
-}
-
-func TestSyncSite_SubpathNotExist(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "syncer-subpath-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	// Create a minimal git repo structure without the subpath
-	repoDir := filepath.Join(tmpDir, ".repos", "test-site")
-	gitDir := filepath.Join(repoDir, ".git")
-	if err := os.MkdirAll(gitDir, 0755); err != nil {
-		t.Fatalf("failed to create git dir: %v", err)
-	}
-	// Create minimal git files to make go-git recognize it
-	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0644); err != nil {
-		t.Fatalf("failed to create HEAD: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(gitDir, "objects"), 0755); err != nil {
-		t.Fatalf("failed to create objects dir: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(gitDir, "refs"), 0755); err != nil {
-		t.Fatalf("failed to create refs dir: %v", err)
-	}
-
-	s := &Syncer{
-		SitesRoot:     tmpDir,
-		AllowedHosts:  []string{"github.com"},
-		DynamicClient: &fakeDynamicClient{activeSites: []string{"test-site"}},
-		ClientSet:     newFakeClientset(),
-	}
-
-	site := &staticSiteData{
-		Name:      "test-site",
-		Namespace: "default",
-		Repo:      "https://github.com/example/repo.git",
-		Branch:    "main",
-		Path:      "/nonexistent/subpath",
-	}
-
-	ctx := context.Background()
-	err = s.syncSite(ctx, site)
-
-	if err == nil {
-		t.Error("expected error for nonexistent subpath, got nil")
-	}
-	// Either we get a subpath error or a pull error (since fake repo can't pull)
-	if !strings.Contains(err.Error(), "subpath") && !strings.Contains(err.Error(), "git fetch failed") {
+	if syncReason(err) != pagesv1.SyncReasonCloneFailed {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -1038,7 +725,7 @@ func TestSyncSite_AuthWithUsername(t *testing.T) {
 	if err == nil {
 		t.Error("expected clone error, got nil")
 	}
-	if !strings.Contains(err.Error(), "git clone failed") {
+	if syncReason(err) != pagesv1.SyncReasonCloneFailed {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -1081,7 +768,7 @@ func TestSyncSite_AuthWithDefaultUsername(t *testing.T) {
 	if err == nil {
 		t.Error("expected clone error, got nil")
 	}
-	if !strings.Contains(err.Error(), "git clone failed") {
+	if syncReason(err) != pagesv1.SyncReasonCloneFailed {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }
@@ -1244,87 +931,6 @@ func TestCleanup_ListError(t *testing.T) {
 	}
 }
 
-func TestUpdateStatus_PatchError(t *testing.T) {
-	fakeClient := &fakeDynamicClientWithPatchError{
-		patchError: fmt.Errorf("connection refused"),
-	}
-
-	s := &Syncer{
-		DynamicClient: fakeClient,
-	}
-
-	site := &staticSiteData{
-		Name:      "test-site",
-		Namespace: "default",
-	}
-
-	ctx := context.Background()
-
-	// updateStatus should not panic and should handle the error gracefully
-	// The error is logged but not returned
-	s.updateStatus(ctx, site, "Ready", "Synced successfully", "abc123")
-
-	// If we reach here without panic, the test passes
-	// The function logs the error but doesn't return it
-}
-
-func TestSyncSite_CorruptedRepo(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "syncer-corrupt-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	// Create a corrupted git repo - valid enough to open but fails on operations
-	siteDir := filepath.Join(tmpDir, "test-site")
-	gitDir := filepath.Join(siteDir, ".git")
-	if err := os.MkdirAll(gitDir, 0755); err != nil {
-		t.Fatalf("failed to create git dir: %v", err)
-	}
-	// Create minimal git structure
-	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0644); err != nil {
-		t.Fatalf("failed to create HEAD: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(gitDir, "objects"), 0755); err != nil {
-		t.Fatalf("failed to create objects dir: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(gitDir, "refs"), 0755); err != nil {
-		t.Fatalf("failed to create refs dir: %v", err)
-	}
-	// Non-bare config
-	configContent := "[core]\n\tbare = false\n"
-	if err := os.WriteFile(filepath.Join(gitDir, "config"), []byte(configContent), 0644); err != nil {
-		t.Fatalf("failed to create config: %v", err)
-	}
-
-	s := &Syncer{
-		SitesRoot:     tmpDir,
-		AllowedHosts:  []string{"invalid.test"},
-		DynamicClient: &fakeDynamicClient{activeSites: []string{"test-site"}},
-		ClientSet:     newFakeClientset(),
-	}
-
-	site := &staticSiteData{
-		Name:      "test-site",
-		Namespace: "default",
-		Repo:      "https://invalid.test/example/repo.git",
-		Branch:    "main",
-		Path:      "/",
-	}
-
-	ctx := context.Background()
-	err = s.syncSite(ctx, site)
-
-	// Corrupted repo should fail during pull operation
-	if err == nil {
-		t.Error("expected error for corrupted repo, got nil")
-	}
-	// The error should be git pull related since the repo has no valid remote
-	if !strings.Contains(err.Error(), "git fetch failed") {
-		t.Errorf("unexpected error message: %v", err)
-	}
-}
-
 func TestCleanup_ReadDirError(t *testing.T) {
 	// Use a non-existent directory as SitesRoot
 	nonExistentDir := "/tmp/syncer-test-nonexistent-" + fmt.Sprintf("%d", os.Getpid())
@@ -1342,232 +948,6 @@ func TestCleanup_ReadDirError(t *testing.T) {
 		t.Error("expected error for non-existent sites directory, got nil")
 	}
 	if !strings.Contains(err.Error(), "failed to read sites directory") {
-		t.Errorf("unexpected error message: %v", err)
-	}
-}
-
-func TestSyncSite_NonFastForwardUpdate(t *testing.T) {
-	// This test simulates a force-pushed branch scenario:
-	// 1. Create a local git repo (simulating remote)
-	// 2. Clone it to sites directory
-	// 3. Make a new divergent commit in the "remote" (simulate force push)
-	// 4. Syncer should successfully sync to the new commit
-
-	tmpDir, err := os.MkdirTemp("", "syncer-nff-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	// Create the "remote" repo
-	remoteDir := filepath.Join(tmpDir, "remote")
-	if err := os.MkdirAll(remoteDir, 0755); err != nil {
-		t.Fatalf("failed to create remote dir: %v", err)
-	}
-
-	// Initialize a git repo with an initial commit
-	remoteRepo, err := git.PlainInit(remoteDir, false)
-	if err != nil {
-		t.Fatalf("failed to init remote repo: %v", err)
-	}
-
-	// Create initial file
-	indexPath := filepath.Join(remoteDir, "index.html")
-	if err := os.WriteFile(indexPath, []byte("<h1>Version 1</h1>"), 0644); err != nil {
-		t.Fatalf("failed to create index.html: %v", err)
-	}
-
-	// Stage and commit
-	remoteWorktree, err := remoteRepo.Worktree()
-	if err != nil {
-		t.Fatalf("failed to get remote worktree: %v", err)
-	}
-	if _, err := remoteWorktree.Add("index.html"); err != nil {
-		t.Fatalf("failed to add file: %v", err)
-	}
-	commit1, err := remoteWorktree.Commit("Initial commit", &git.CommitOptions{
-		Author: &object.Signature{
-			Name:  "Test",
-			Email: "test@example.com",
-			When:  time.Now(),
-		},
-	})
-	if err != nil {
-		t.Fatalf("failed to create initial commit: %v", err)
-	}
-
-	// Create syncer sites directory
-	sitesDir := filepath.Join(tmpDir, "sites")
-	if err := os.MkdirAll(sitesDir, 0755); err != nil {
-		t.Fatalf("failed to create sites dir: %v", err)
-	}
-
-	// Clone to sites directory (simulating initial sync)
-	siteDir := filepath.Join(sitesDir, "test-site")
-	cloneOpts := &git.CloneOptions{
-		URL:           remoteDir,
-		ReferenceName: plumbing.Master,
-		SingleBranch:  true,
-		Depth:         1,
-	}
-	clonedRepo, err := git.PlainClone(siteDir, false, cloneOpts)
-	if err != nil {
-		t.Fatalf("failed to clone repo: %v", err)
-	}
-
-	// Verify we're at commit1
-	head, err := clonedRepo.Head()
-	if err != nil {
-		t.Fatalf("failed to get HEAD: %v", err)
-	}
-	if head.Hash() != commit1 {
-		t.Fatalf("expected HEAD to be %s, got %s", commit1, head.Hash())
-	}
-
-	// Now simulate a force push: reset the remote and create a divergent commit
-	// First reset to commit1, then make a different change
-	if err := remoteWorktree.Reset(&git.ResetOptions{
-		Mode:   git.HardReset,
-		Commit: commit1,
-	}); err != nil {
-		t.Fatalf("failed to reset: %v", err)
-	}
-
-	// Make a different change that creates a new history
-	if err := os.WriteFile(indexPath, []byte("<h1>Version 2 - Rebased</h1>"), 0644); err != nil {
-		t.Fatalf("failed to update index.html: %v", err)
-	}
-	if _, err := remoteWorktree.Add("index.html"); err != nil {
-		t.Fatalf("failed to add rebased file: %v", err)
-	}
-	commit2, err := remoteWorktree.Commit("Rebased commit", &git.CommitOptions{
-		Author: &object.Signature{
-			Name:  "Test",
-			Email: "test@example.com",
-			When:  time.Now().Add(time.Second), // Different timestamp for different hash
-		},
-	})
-	if err != nil {
-		t.Fatalf("failed to create rebased commit: %v", err)
-	}
-
-	// Verify commit2 is different from commit1
-	if commit1 == commit2 {
-		t.Fatal("commit1 and commit2 should be different")
-	}
-
-	// Now try to sync using the syncer's pull logic
-	// This is where the current implementation fails with "non-fast-forward update"
-	s := &Syncer{
-		SitesRoot:     sitesDir,
-		AllowedHosts:  []string{"example.com"}, // Not used for local path
-		DynamicClient: &fakeDynamicClient{activeSites: []string{"test-site"}},
-		ClientSet:     newFakeClientset(),
-	}
-
-	site := &staticSiteData{
-		Name:      "test-site",
-		Namespace: "default",
-		Repo:      remoteDir, // Local path works with go-git
-		Branch:    "master",
-		Path:      "/",
-	}
-
-	ctx := context.Background()
-
-	// Call pullRepo directly - we need to test the pull logic
-	_, err = s.pullRepo(ctx, siteDir, site, nil)
-
-	// Current implementation fails here with "non-fast-forward update"
-	if err != nil {
-		t.Errorf("pullRepo failed on non-fast-forward update: %v", err)
-	}
-
-	// Verify we're now at commit2
-	clonedRepo, err = git.PlainOpen(siteDir)
-	if err != nil {
-		t.Fatalf("failed to reopen repo: %v", err)
-	}
-	head, err = clonedRepo.Head()
-	if err != nil {
-		t.Fatalf("failed to get HEAD after sync: %v", err)
-	}
-	if head.Hash() != commit2 {
-		t.Errorf("expected HEAD to be %s (rebased commit), got %s", commit2, head.Hash())
-	}
-
-	// Verify file content
-	content, err := os.ReadFile(filepath.Join(siteDir, "index.html"))
-	if err != nil {
-		t.Fatalf("failed to read index.html: %v", err)
-	}
-	if string(content) != "<h1>Version 2 - Rebased</h1>" {
-		t.Errorf("unexpected content: %s", content)
-	}
-}
-
-func TestSyncSite_PullWithAuth(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "syncer-pull-auth-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
-	// Create a valid non-bare git repo structure
-	siteDir := filepath.Join(tmpDir, "test-site")
-	gitDir := filepath.Join(siteDir, ".git")
-	if err := os.MkdirAll(gitDir, 0755); err != nil {
-		t.Fatalf("failed to create git dir: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0644); err != nil {
-		t.Fatalf("failed to create HEAD: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(gitDir, "objects"), 0755); err != nil {
-		t.Fatalf("failed to create objects dir: %v", err)
-	}
-	if err := os.MkdirAll(filepath.Join(gitDir, "refs"), 0755); err != nil {
-		t.Fatalf("failed to create refs dir: %v", err)
-	}
-	// Non-bare config
-	configContent := "[core]\n\tbare = false\n"
-	if err := os.WriteFile(filepath.Join(gitDir, "config"), []byte(configContent), 0644); err != nil {
-		t.Fatalf("failed to create config: %v", err)
-	}
-
-	// Create secrets with auth credentials
-	secrets := []*corev1.Secret{
-		newTestSecret("default", "git-creds", map[string][]byte{
-			"username": []byte("myuser"),
-			"password": []byte("mypassword"),
-		}),
-	}
-
-	s := &Syncer{
-		SitesRoot:     tmpDir,
-		AllowedHosts:  []string{"invalid.test"},
-		DynamicClient: &fakeDynamicClient{activeSites: []string{"test-site"}},
-		ClientSet:     newFakeClientset(secrets...),
-	}
-
-	site := &staticSiteData{
-		Name:      "test-site",
-		Namespace: "default",
-		Repo:      "https://invalid.test/example/repo.git",
-		Branch:    "main",
-		Path:      "/",
-		SecretRef: &secretRef{Name: "git-creds", Key: "password"},
-	}
-
-	ctx := context.Background()
-	err = s.syncSite(ctx, site)
-
-	// We expect a pull failure since it's not a real remote,
-	// but the auth with username should have been set up
-	if err == nil {
-		t.Error("expected pull error, got nil")
-	}
-	// The error should be git pull related
-	if !strings.Contains(err.Error(), "git fetch failed") {
 		t.Errorf("unexpected error message: %v", err)
 	}
 }

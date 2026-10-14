@@ -90,8 +90,8 @@ func TestReconcile_NewSite(t *testing.T) {
 		t.Fatalf("failed to get site: %v", err)
 	}
 
-	if updatedSite.Status.Phase != pagesv1.PhaseReady {
-		t.Errorf("Phase = %q, want %q", updatedSite.Status.Phase, pagesv1.PhaseReady)
+	if updatedSite.Status.Phase != pagesv1.PhasePending {
+		t.Errorf("Phase = %q, want %q", updatedSite.Status.Phase, pagesv1.PhasePending)
 	}
 	if updatedSite.Status.URL != "https://test-site.pages.kup6s.com" {
 		t.Errorf("URL = %q, want %q", updatedSite.Status.URL, "https://test-site.pages.kup6s.com")
@@ -659,8 +659,8 @@ func TestReconcile_PathPrefix(t *testing.T) {
 		t.Errorf("URL = %q, want %q", updatedSite.Status.URL, wantURL)
 	}
 
-	if updatedSite.Status.Phase != pagesv1.PhaseReady {
-		t.Errorf("Phase = %q, want %q", updatedSite.Status.Phase, pagesv1.PhaseReady)
+	if updatedSite.Status.Phase != pagesv1.PhasePending {
+		t.Errorf("Phase = %q, want %q", updatedSite.Status.Phase, pagesv1.PhasePending)
 	}
 }
 
@@ -2295,8 +2295,8 @@ func TestReconcile_ExistingCertificateSkipsCreate(t *testing.T) {
 		t.Fatalf("failed to get site: %v", err)
 	}
 
-	if updatedSite.Status.Phase != pagesv1.PhaseReady {
-		t.Errorf("Phase = %q, want %q", updatedSite.Status.Phase, pagesv1.PhaseReady)
+	if updatedSite.Status.Phase != pagesv1.PhasePending {
+		t.Errorf("Phase = %q, want %q", updatedSite.Status.Phase, pagesv1.PhasePending)
 	}
 }
 
@@ -2863,7 +2863,7 @@ func TestUpdateFinalStatus_StatusUpdateFails(t *testing.T) {
 	// Create a client that fails only on final status update (not initial ones)
 	failingClient := &selectiveFailingStatusClient{
 		Client:      baseClient,
-		failOnPhase: pagesv1.PhaseReady,
+		failOnPhase: pagesv1.PhasePending,
 	}
 
 	r := &StaticSiteReconciler{

@@ -11,6 +11,10 @@ metadata:
     {{- include "kup6s-pages.syncer.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.syncer.replicas }}
+  # Locks are in-process and each pod sweeps leftover temp clones, so two
+  # syncers must never overlap, not even during a rollout.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "kup6s-pages.syncer.selectorLabels" . | nindent 6 }}
@@ -44,6 +48,9 @@ spec:
             - --sync-interval={{ .Values.syncer.syncInterval }}
             - --webhook-addr={{ .Values.syncer.webhookAddr }}
             - --allowed-hosts={{ .Values.syncer.allowedHosts | join "," }}
+            - --git-timeout={{ .Values.syncer.gitTimeout }}
+            - --min-free-percent={{ .Values.syncer.minFreePercent }}
+            - --metrics-addr=:{{ .Values.syncer.metricsPort }}
             {{- if include "kup6s-pages.webhook.hasSecret" . }}
             - --webhook-secret=$(WEBHOOK_SECRET)
             {{- end }}
@@ -65,6 +72,9 @@ spec:
           ports:
             - name: webhook
               containerPort: 8080
+              protocol: TCP
+            - name: metrics
+              containerPort: {{ .Values.syncer.metricsPort }}
               protocol: TCP
           volumeMounts:
             - name: sites

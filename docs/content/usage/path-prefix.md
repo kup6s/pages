@@ -45,6 +45,11 @@ spec:
 - Requests to `https://www.example.com/2019/page.html` serve from `archive-2019` repo
 - Requests to `https://www.example.com/2020/page.html` serve from `archive-2020` repo
 
+Several StaticSites can serve different directories of one repository, each with its own `path` and `pathPrefix`.
+Each site keeps its own clone, but only checks out and downloads its own directory, so disk use stays close to the size of the repository.
+This needs a git server with partial-clone support (GitHub, GitLab, Gitea and Forgejo have it).
+Other servers send the full repository to each site.
+
 ## Requirements
 
 - `pathPrefix` requires a custom `domain` to be set

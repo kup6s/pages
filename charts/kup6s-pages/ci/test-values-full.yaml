@@ -20,6 +20,8 @@ syncer:
   image:
     tag: "v1.0.0"
   syncInterval: "10m"
+  allowedHosts:
+    - github.com
   resources:
     limits:
       cpu: 1000m
@@ -48,6 +50,7 @@ storage:
 webhook:
   enabled: true
   domain: "webhook.pages.example.com"
+  secret: "ci-test-secret"
   clusterIssuer: "letsencrypt-prod"
 
 rbac:

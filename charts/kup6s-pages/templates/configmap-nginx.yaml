@@ -30,9 +30,20 @@ data:
 
         root /sites;
 
+        # Never serve git metadata (.git directory or .git file)
+        location ~ (^|/)\.git(/|$) {
+            return 404;
+        }
+
         location / {
             # Try file, then directory, then index.html
             try_files $uri $uri/ $uri/index.html =404;
+
+            # Nested regexes are matched in order and win over the one above,
+            # so git metadata is denied before the asset rule can serve it.
+            location ~ (^|/)\.git(/|$) {
+                return 404;
+            }
 
             # Caching for static assets
             location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2)$ {

@@ -55,3 +55,47 @@ kup6s-pages-syncer-xxx                    1/1     Running   0          1m
 kup6s-pages-nginx-xxx                     1/1     Running   0          1m
 kup6s-pages-nginx-yyy                     1/1     Running   0          1m
 ```
+
+## Upgrading to the git CLI syncer (#153)
+
+The syncer now runs the `git` command line with sparse, blobless clones instead of go-git.
+Read these notes before upgrading.
+
+### Repository URLs must not redirect
+
+The syncer does not follow HTTP redirects, because a redirect would carry credentials to another host.
+A StaticSite whose repository URL redirects (a renamed project, `http` to `https`, a server that redirects URLs without `.git`) goes to `Synced=False` with reason `CloneFailed`.
+It keeps serving its last content.
+
+Check every site before upgrading:
+
+```bash
+kubectl get staticsites -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name} {.spec.repo}{"\n"}{end}'
+```
+
+Then, for each URL:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' "<repo>/info/refs?service=git-upload-pack"
+```
+
+A `3xx` answer means `spec.repo` must be changed to the final URL.
+Private repositories may answer `401`, which is fine.
+
+### The first sync re-clones every site
+
+Existing clones carry no marker, so the first sync after the upgrade replaces each one.
+Site directories with `path: /` become symlinks to the clone.
+Expect a burst of clones, and check the free space of the sites volume.
+
+### Rolling back
+
+The previous syncer cannot use the new layout.
+To roll back:
+
+1. Scale the syncer to 0.
+2. Delete `/sites/.repos` and the site symlinks on the volume.
+3. Roll back the chart.
+
+The old syncer clones every site again.
+

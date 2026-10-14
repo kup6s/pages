@@ -27,7 +27,7 @@ The operator will:
 1. Create a Traefik Middleware (`my-website-prefix`) with `addPrefix: /my-website`
 2. Create a Traefik IngressRoute for `Host(`www.example.com`)`
 3. Create a cert-manager Certificate for the domain
-4. The Syncer clones the repo to `/sites/my-website/`
+4. The Syncer clones the repo to `/sites/.repos/my-website/` and links `/sites/my-website/` to it
 
 ## Check Status
 
@@ -74,4 +74,4 @@ spec:
   domain: docs.example.com
 ```
 
-The Syncer clones to `/sites/.repos/docs/` and creates a symlink `/sites/docs/` → `/sites/.repos/docs/dist/`.
+The Syncer checks out only `dist/` into `/sites/.repos/docs/` and links `/sites/docs/` → `/sites/.repos/docs/dist/`.

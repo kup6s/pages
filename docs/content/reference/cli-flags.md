@@ -49,6 +49,9 @@ go run ./cmd/operator \
 | `--webhook-addr` | `:8080` | Webhook HTTP server address |
 | `--allowed-hosts` | **Required** | Comma-separated allowlist of Git hosts |
 | `--webhook-secret` | `""` | Secret for webhook HMAC validation |
+| `--git-timeout` | `10m` | Timeout for a single git operation |
+| `--min-free-percent` | `10` | Skip clones and updates when the sites volume has less free space (0 disables) |
+| `--metrics-addr` | `:9090` | Address of the Prometheus metrics endpoint |
 
 ### Example
 

@@ -14,6 +14,9 @@ tests:
       - equal:
           path: spec.replicas
           value: 1
+      - equal:
+          path: spec.strategy.type
+          value: Recreate
       - matchRegex:
           path: spec.template.spec.containers[0].image
           pattern: ^ghcr\.io/kup6s/pages-syncer:.+$
@@ -77,3 +80,27 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].args
           content: --allowed-hosts=forgejo.example.com,*.gitlab.internal
+
+  - it: should pass git timeout, free-space and metrics flags
+    asserts:
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --git-timeout=10m
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --min-free-percent=10
+      - contains:
+          path: spec.template.spec.containers[0].args
+          content: --metrics-addr=:9090
+      - contains:
+          path: spec.template.spec.containers[0].ports
+          content:
+            name: metrics
+            containerPort: 9090
+            protocol: TCP
+
+  - it: should reject more than one replica
+    set:
+      syncer.replicas: 2
+    asserts:
+      - failedTemplate: {}

@@ -64,9 +64,12 @@ Complete reference for all Helm chart configuration options.
 | `syncer.webhookAddr` | `:8080` | Webhook server listen address |
 | `syncer.sitesRoot` | `/sites` | Sites root directory |
 | `syncer.allowedHosts` | `[]` | **Required.** Allowed Git hosts for SSRF protection |
+| `syncer.gitTimeout` | `10m` | Timeout for a single git operation |
+| `syncer.minFreePercent` | `10` | Minimum free space on the sites volume in percent (0 disables) |
+| `syncer.metricsPort` | `9090` | Syncer metrics port |
 | `syncer.extraArgs` | `[]` | Additional CLI arguments |
 | `syncer.resources.limits.cpu` | `500m` | CPU limit |
-| `syncer.resources.limits.memory` | `256Mi` | Memory limit |
+| `syncer.resources.limits.memory` | `256Mi` | Memory limit. Sufficient for sites with a path; sites with path `/` and repositories above about 1 GB need more |
 | `syncer.resources.requests.cpu` | `100m` | CPU request |
 | `syncer.resources.requests.memory` | `128Mi` | Memory request |
 | `syncer.nodeSelector` | `{}` | Node selector |
@@ -121,6 +124,26 @@ Complete reference for all Helm chart configuration options.
 | `webhook.secret` | `""` | Webhook secret for HMAC validation |
 | `webhook.secretRef.name` | `""` | Reference to existing secret |
 | `webhook.secretRef.key` | `webhook-secret` | Key in the secret |
+
+## Monitoring
+
+| Value | Default | Description |
+|-------|---------|-------------|
+| `metrics.podMonitor.enabled` | `false` | Create PodMonitors for operator and syncer (requires Prometheus Operator CRDs) |
+| `metrics.podMonitor.interval` | `30s` | Scrape interval |
+| `metrics.podMonitor.labels` | `{}` | Extra labels, for the Prometheus podMonitorSelector |
+| `metrics.prometheusRule.enabled` | `false` | Create a PrometheusRule with sync and volume alerts |
+| `metrics.prometheusRule.labels` | `{}` | Extra labels, for the Prometheus ruleSelector |
+| `metrics.prometheusRule.failingFor` | `15m` | Delay before `PagesSiteSyncFailing` fires |
+| `metrics.prometheusRule.staleAfterSeconds` | `900` | Age of the last successful sync before `PagesSiteSyncStale` fires; about 3x `syncer.syncInterval` |
+| `metrics.prometheusRule.volumeLowPercent` | `15` | Free space below which `PagesVolumeLow` fires |
+
+The alerts aggregate per site with `max by (namespace, name)`, so several operator replicas do not duplicate them.
+
+Metrics:
+
+- Operator, per site: `pages_site_synced`, `pages_site_last_sync_timestamp_seconds`
+- Syncer: `pages_syncer_sync_total`, `pages_syncer_git_duration_seconds`, `pages_syncer_volume_free_bytes`, `pages_syncer_volume_size_bytes`
 
 ## RBAC
 
