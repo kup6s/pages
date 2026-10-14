@@ -132,6 +132,9 @@ nginx's built-in redirect would expose the internal `/<site>` path that Traefik 
 Only plain path segments are accepted from that header, so a client cannot turn the redirect into one to another host.
 The redirect is relative, so the browser keeps the public scheme and host.
 
+nginx reads its configuration only at start.
+The nginx pods carry a checksum of it (`checksum/config`), so a chart upgrade that changes the configuration, or `nginx.customConfig`, rolls them.
+
 ## Request Flow
 
 ```
