@@ -10,9 +10,27 @@ data:
 {{- if .Values.nginx.customConfig }}
 {{ .Values.nginx.customConfig | indent 4 }}
 {{- else }}
+    # Public path prefix removed by Traefik's stripPrefix middleware, which
+    # reports it in X-Forwarded-Prefix. Only plain path segments are accepted,
+    # so a client-supplied header can never point a redirect to another host.
+    map $http_x_forwarded_prefix $public_prefix {
+        default "";
+        "~^(?<prefix>(/[A-Za-z0-9._~%-]+)+)/?$" $prefix;
+    }
+
+    # The still-encoded request path without the /<site> segment that
+    # Traefik's addPrefix middleware put in front of it.
+    map $request_uri $site_path {
+        default "";
+        "~^/[^/?]+(?<path>/[^?]*)" $path;
+    }
+
     server {
         listen 80;
         server_name _;
+
+        # Redirects stay relative, so the browser keeps scheme and host.
+        absolute_redirect off;
 
         # Health Check Endpoint
         location /health {
@@ -36,6 +54,20 @@ data:
         }
 
         location / {
+            # A directory requested without trailing slash is redirected to
+            # its public URL with a slash, so relative links resolve. nginx's
+            # built-in redirect would expose the internal /<site> path.
+            set $dir_redirect "";
+            if (-d $request_filename) {
+                set $dir_redirect "yes";
+            }
+            if ($uri ~ /$) {
+                set $dir_redirect "";
+            }
+            if ($dir_redirect = "yes") {
+                return 301 $public_prefix$site_path/$is_args$args;
+            }
+
             # Try file, then directory, then index.html
             try_files $uri $uri/ $uri/index.html =404;
 

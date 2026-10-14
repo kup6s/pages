@@ -66,6 +66,9 @@ jobs:
       - name: Run unit tests
         run: helm unittest charts/kup6s-pages
 
+      - name: Run nginx behavior test
+        run: charts/kup6s-pages/tests/nginx/run.sh
+
       - name: Cache kubeconform
         uses: actions/cache@v6
         with:

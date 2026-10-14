@@ -98,7 +98,7 @@ Complete reference for all Helm chart configuration options.
 | `nginx.affinity` | (pod anti-affinity) | Affinity rules |
 | `nginx.service.type` | `ClusterIP` | Service type |
 | `nginx.service.port` | `80` | Service port |
-| `nginx.customConfig` | `""` | Custom nginx configuration |
+| `nginx.customConfig` | `""` | Custom nginx configuration. Replaces the whole default `server` block, including the directory redirect that uses `X-Forwarded-Prefix` |
 | `nginx.pdb.enabled` | `true` | Enable PodDisruptionBudget |
 | `nginx.pdb.minAvailable` | `1` | Minimum available pods |
 

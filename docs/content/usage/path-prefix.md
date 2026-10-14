@@ -55,6 +55,7 @@ Other servers send the full repository to each site.
 - `pathPrefix` requires a custom `domain` to be set
 - Path prefixes must be unique per domain
 - The prefix is stripped before serving (so `/2019/index.html` serves `index.html` from the repo)
+- A directory without trailing slash redirects to the public URL with slash (`/2019` → `/2019/`)
 
 ## Root Path
 

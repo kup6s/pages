@@ -118,6 +118,7 @@ A single nginx Deployment serves all sites with a static configuration:
 server {
     listen 80;
     root /sites;
+    absolute_redirect off;
     location / {
         try_files $uri $uri/ $uri/index.html =404;
     }
@@ -125,6 +126,11 @@ server {
 ```
 
 No dynamic configuration needed - routing is handled by Traefik via addPrefix.
+
+A directory requested without a trailing slash (`/2019`, `/docs/guide`) is redirected to the same public URL with a slash.
+nginx's built-in redirect would expose the internal `/<site>` path that Traefik added, so the configuration builds the target itself: the prefix that Traefik's `stripPrefix` reported in `X-Forwarded-Prefix`, followed by the request path without the `/<site>` segment.
+Only plain path segments are accepted from that header, so a client cannot turn the redirect into one to another host.
+The redirect is relative, so the browser keeps the public scheme and host.
 
 ## Request Flow
 

@@ -59,6 +59,9 @@ helm-lint:
 helm-test:
 	helm unittest charts/kup6s-pages
 
+nginx-test:
+	charts/kup6s-pages/tests/nginx/run.sh
+
 helm-template:
 	helm template pages charts/kup6s-pages
 

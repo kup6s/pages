@@ -121,4 +121,19 @@ tests:
     asserts:
       - matchRegex:
           path: data["default.conf"]
-          pattern: 'location / \{[^}]*\n\s+location ~ \(\^\|/\)\\\.git\(/\|\$\) \{\s+return 404;\s+\}\s+[^}]*location ~\* \\\.\(js'
+          pattern: '(?s)location / \{.*\n\s+location ~ \(\^\|/\)\\\.git\(/\|\$\) \{\s+return 404;\s+\}\s+.*location ~\* \\\.\(js'
+
+  - it: should keep redirects relative so scheme and host stay public
+    asserts:
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: "absolute_redirect off;"
+
+  - it: should redirect directories without slash to the public prefix
+    asserts:
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: 'map \$http_x_forwarded_prefix \$public_prefix'
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: 'return 301 \$public_prefix\$site_path/\$is_args\$args;'
