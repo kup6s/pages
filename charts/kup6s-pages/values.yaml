@@ -126,7 +126,8 @@ operator:
 # Syncer Configuration
 # =============================================================================
 syncer:
-  # -- Number of syncer replicas (usually 1 to avoid conflicts)
+  # -- Number of syncer replicas. Must be 1: locks are in-process and each pod
+  # removes the other's temporary clones.
   replicas: 1
 
   image:
@@ -154,6 +155,16 @@ syncer:
   # Example: ["github.com", "gitlab.com", "bitbucket.org"]
   allowedHosts: []
 
+  # -- Timeout for a single git operation (clone, fetch, reset)
+  gitTimeout: "10m"
+
+  # -- Minimum free space on the sites volume in percent. Clones and updates
+  # are skipped below it and the site reports Synced=False/DiskFull. 0 disables the check.
+  minFreePercent: 10
+
+  # -- Port of the syncer's Prometheus metrics endpoint (not routed through the webhook IngressRoute)
+  metricsPort: 9090
+
   # -- Additional CLI arguments
   extraArgs: []
 
@@ -176,6 +187,8 @@ syncer:
       drop:
         - ALL
 
+  # 256Mi suffices for sites with a `path`. Sites with `path: /` and repositories
+  # above about 1 GB need a higher memory limit.
   # -- Resource requests and limits
   resources:
     limits:
@@ -364,3 +377,27 @@ webhook:
 rbac:
   # -- Create ClusterRole and ClusterRoleBinding resources
   create: true
+
+# =============================================================================
+# Monitoring
+# =============================================================================
+metrics:
+  podMonitor:
+    # -- Create PodMonitors for operator and syncer (requires the Prometheus Operator CRDs)
+    enabled: false
+    # -- Scrape interval
+    interval: 30s
+    # -- Extra labels, e.g. to match the Prometheus podMonitorSelector
+    labels: {}
+
+  prometheusRule:
+    # -- Create a PrometheusRule with sync and volume alerts
+    enabled: false
+    # -- Extra labels, e.g. to match the Prometheus ruleSelector
+    labels: {}
+    # -- How long a site may report Synced other than True before PagesSiteSyncFailing fires
+    failingFor: 15m
+    # -- Seconds since the last successful sync before PagesSiteSyncStale fires (about 3x syncer.syncInterval)
+    staleAfterSeconds: 900
+    # -- Free space in percent below which PagesVolumeLow fires
+    volumeLowPercent: 15

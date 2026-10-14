@@ -3,15 +3,22 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/tools/events"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 
@@ -24,12 +31,18 @@ func main() {
 	var webhookAddr string
 	var webhookSecret string
 	var allowedHosts string
+	var gitTimeout time.Duration
+	var minFreePercent float64
+	var metricsAddr string
 
 	flag.StringVar(&sitesRoot, "sites-root", "/sites", "Root directory for synced sites")
 	flag.DurationVar(&syncInterval, "sync-interval", 5*time.Minute, "Interval between full syncs")
 	flag.StringVar(&webhookAddr, "webhook-addr", ":8080", "Address for webhook HTTP server")
 	flag.StringVar(&webhookSecret, "webhook-secret", "", "Secret for webhook signature validation")
 	flag.StringVar(&allowedHosts, "allowed-hosts", "", "Comma-separated list of allowed Git hosts (SSRF protection)")
+	flag.DurationVar(&gitTimeout, "git-timeout", 10*time.Minute, "Timeout for a single git operation")
+	flag.Float64Var(&minFreePercent, "min-free-percent", 10, "Skip clones and updates below this free space on the sites volume (0 disables)")
+	flag.StringVar(&metricsAddr, "metrics-addr", ":9090", "Address for the Prometheus metrics endpoint")
 
 	opts := zap.Options{Development: true}
 	opts.BindFlags(flag.CommandLine)
@@ -86,6 +99,8 @@ func main() {
 		SitesRoot:       sitesRoot,
 		DefaultInterval: syncInterval,
 		AllowedHosts:    hosts,
+		GitTimeout:      gitTimeout,
+		MinFreePercent:  minFreePercent,
 	}
 
 	// Create Webhook Server
@@ -102,6 +117,28 @@ func main() {
 	// Context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	broadcaster := events.NewBroadcaster(&events.EventSinkImpl{Interface: clientset.EventsV1()})
+	broadcaster.StartRecordingToSink(ctx.Done())
+	defer broadcaster.Shutdown()
+	s.Recorder = broadcaster.NewRecorder(clientgoscheme.Scheme, "pages-syncer")
+
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
+	s.Metrics = syncer.NewMetrics(registry)
+
+	go func() {
+		mux := http.NewServeMux()
+		mux.Handle("/metrics", promhttp.HandlerFor(registry, promhttp.HandlerOpts{}))
+		server := &http.Server{Addr: metricsAddr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+		go func() {
+			<-ctx.Done()
+			_ = server.Shutdown(context.Background())
+		}()
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error(err, "metrics server failed")
+		}
+	}()
 
 	// Signal Handling
 	sigChan := make(chan os.Signal, 1)
@@ -124,6 +161,9 @@ func main() {
 		"sitesRoot", sitesRoot,
 		"syncInterval", syncInterval,
 		"webhookAddr", webhookAddr,
+		"metricsAddr", metricsAddr,
+		"minFreePercent", minFreePercent,
+		"gitTimeout", gitTimeout,
 	)
 
 	// Wait for signal

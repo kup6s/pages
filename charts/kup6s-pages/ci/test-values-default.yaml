@@ -1,2 +1,5 @@
 # Test with default values
-# This file intentionally empty to test chart defaults
+# Chart defaults; only the required syncer.allowedHosts is set
+syncer:
+  allowedHosts:
+    - github.com

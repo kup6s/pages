@@ -1,0 +1,40 @@
+{{- if .Values.metrics.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "kup6s-pages.fullname" . }}
+  namespace: {{ include "kup6s-pages.namespace" . }}
+  labels:
+    {{- include "kup6s-pages.labels" . | nindent 4 }}
+    {{- with .Values.metrics.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: kup6s-pages
+      rules:
+        - alert: PagesSiteSyncFailing
+          expr: max by (namespace, name) (pages_site_synced) == 0
+          for: {{ .Values.metrics.prometheusRule.failingFor }}
+          labels:
+            severity: warning
+          annotations:
+            summary: StaticSite {{`{{ $labels.namespace }}/{{ $labels.name }}`}} is not synced
+            description: The Synced condition is not True. Check it with `kubectl describe staticsite -n {{`{{ $labels.namespace }} {{ $labels.name }}`}}`.
+        - alert: PagesSiteSyncStale
+          expr: time() - max by (namespace, name) (pages_site_last_sync_timestamp_seconds) > {{ .Values.metrics.prometheusRule.staleAfterSeconds }}
+          for: 15m
+          labels:
+            severity: warning
+          annotations:
+            summary: StaticSite {{`{{ $labels.namespace }}/{{ $labels.name }}`}} has not synced recently
+            description: The last successful sync is older than {{ .Values.metrics.prometheusRule.staleAfterSeconds }} seconds. The syncer may not be running.
+        - alert: PagesVolumeLow
+          expr: pages_syncer_volume_free_bytes / pages_syncer_volume_size_bytes * 100 < {{ .Values.metrics.prometheusRule.volumeLowPercent }}
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: The kup6s-pages sites volume is running full
+            description: Less than {{ .Values.metrics.prometheusRule.volumeLowPercent }}% of the sites volume is free. Clones stop below syncer.minFreePercent.
+{{- end }}

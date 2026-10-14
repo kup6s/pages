@@ -6,3 +6,7 @@ operator:
 storage:
   storageClassName: "longhorn"
   size: 20Gi
+
+syncer:
+  allowedHosts:
+    - github.com

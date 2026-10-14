@@ -3,7 +3,6 @@ package syncer
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
@@ -11,16 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-git/go-git/v5"
-	"github.com/go-git/go-git/v5/config"
-	"github.com/go-git/go-git/v5/plumbing"
-	"github.com/go-git/go-git/v5/plumbing/transport/http"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
@@ -46,6 +41,9 @@ type Syncer struct {
 	DynamicClient dynamic.Interface
 	ClientSet     kubernetes.Interface
 
+	// Recorder emits SyncFailed and SyncRecovered events; nil disables events.
+	Recorder events.EventRecorder
+
 	// Base directory for sites (e.g. /sites)
 	SitesRoot string
 
@@ -55,6 +53,21 @@ type Syncer struct {
 	// AllowedHosts is a list of allowed Git hosts (SSRF protection).
 	// This field is mandatory - startup will fail if empty.
 	AllowedHosts []string
+
+	// GitTimeout bounds every git invocation; zero means no limit.
+	GitTimeout time.Duration
+
+	// Git overrides the git wrapper (tests); nil uses git from PATH.
+	Git *gitCLI
+
+	// MinFreePercent is the free space on the sites volume below which clones
+	// and updates are skipped; zero disables the check.
+	MinFreePercent float64
+
+	// Metrics records sync results; nil disables metrics.
+	Metrics *Metrics
+
+	locks siteLocks
 }
 
 // validateRepoURL checks if the repo URL is allowed (SSRF protection)
@@ -125,8 +138,6 @@ func (s *Syncer) SyncAll(ctx context.Context) error {
 
 		if err := s.syncSite(ctx, site); err != nil {
 			logger.Error(err, "Failed to sync site", "name", site.Name)
-			s.updateStatus(ctx, site, "Error", err.Error(), "")
-			continue
 		}
 	}
 
@@ -151,176 +162,6 @@ func (s *Syncer) SyncOne(ctx context.Context, namespace, name string) error {
 	return s.syncSite(ctx, site)
 }
 
-// syncSite synchronizes a single site
-func (s *Syncer) syncSite(ctx context.Context, site *staticSiteData) error {
-	logger := log.FromContext(ctx)
-
-	// SSRF protection: validate repo URL
-	if err := s.validateRepoURL(site.Repo); err != nil {
-		return fmt.Errorf("repo URL validation failed: %w", err)
-	}
-
-	// Target directory for the repo
-	// With subpath: clone to .repos/<name>, symlink to <name>
-	// Without subpath: clone directly to <name>
-	var destDir string
-	hasSubpath := site.Path != "" && site.Path != "/"
-	if hasSubpath {
-		destDir = filepath.Join(s.SitesRoot, ".repos", site.Name)
-	} else {
-		destDir = filepath.Join(s.SitesRoot, site.Name)
-	}
-	
-	// Git auth if available
-	var auth *http.BasicAuth
-	if site.SecretRef != nil {
-		password, err := s.getSecretValue(ctx, site.Namespace, site.SecretRef.Name, site.SecretRef.Key)
-		if err != nil {
-			return fmt.Errorf("failed to get git credentials: %w", err)
-		}
-		// Get username from secret, default to "git" if not present
-		username, _ := s.getSecretValue(ctx, site.Namespace, site.SecretRef.Name, "username")
-		if username == "" {
-			username = "git"
-		}
-		auth = &http.BasicAuth{
-			Username: username,
-			Password: password,
-		}
-	}
-
-	var commitHash string
-
-	// Check if repo already exists
-	if _, err := os.Stat(filepath.Join(destDir, ".git")); os.IsNotExist(err) {
-		// Clone
-		logger.Info("Cloning repository", "repo", site.Repo, "dest", destDir)
-		
-		cloneOpts := &git.CloneOptions{
-			URL:           site.Repo,
-			ReferenceName: plumbing.NewBranchReferenceName(site.Branch),
-			SingleBranch:  true,
-			Depth:         1, // Shallow clone
-			Progress:      os.Stdout,
-		}
-		if auth != nil {
-			cloneOpts.Auth = auth
-		}
-
-		repo, err := git.PlainClone(destDir, false, cloneOpts)
-		if err != nil {
-			return fmt.Errorf("git clone failed: %w", err)
-		}
-
-		head, err := repo.Head()
-		if err != nil {
-			logger.V(1).Info("Failed to get HEAD after clone", "error", err)
-		}
-		if head != nil {
-			commitHash = head.Hash().String()[:8]
-		}
-	} else {
-		// Pull (using fetch + reset to handle force-pushed branches)
-		logger.Info("Pulling repository", "repo", site.Repo, "dest", destDir)
-
-		hash, err := s.pullRepo(ctx, destDir, site, auth)
-		if err != nil {
-			return err
-		}
-		commitHash = hash
-	}
-
-	// If a subpath is defined, create symlink
-	// e.g. /sites/mysite -> /sites/.repos/mysite/dist
-	if hasSubpath {
-		if err := s.setupSubpath(site.Name, destDir, site.Path); err != nil {
-			return fmt.Errorf("failed to setup subpath: %w", err)
-		}
-	}
-
-	// Update status
-	s.updateStatus(ctx, site, "Ready", "Synced successfully", commitHash)
-	
-	logger.Info("Sync complete", "site", site.Name, "commit", commitHash)
-	return nil
-}
-
-// pullRepo fetches and resets to the latest remote commit.
-// This handles non-fast-forward updates (force-pushed branches) by using
-// fetch + hard reset instead of pull, which fails on divergent histories.
-func (s *Syncer) pullRepo(ctx context.Context, destDir string, site *staticSiteData, auth *http.BasicAuth) (string, error) {
-	repo, err := git.PlainOpen(destDir)
-	if err != nil {
-		return "", fmt.Errorf("failed to open repo: %w", err)
-	}
-
-	// Fetch the remote branch
-	fetchOpts := &git.FetchOptions{
-		RemoteName: "origin",
-		RefSpecs:   []config.RefSpec{config.RefSpec("+refs/heads/" + site.Branch + ":refs/remotes/origin/" + site.Branch)},
-		Depth:      1,
-		Force:      true,
-	}
-	if auth != nil {
-		fetchOpts.Auth = auth
-	}
-
-	err = repo.Fetch(fetchOpts)
-	if err != nil && err != git.NoErrAlreadyUpToDate {
-		return "", fmt.Errorf("git fetch failed: %w", err)
-	}
-
-	// Get the fetched commit hash
-	remoteRef, err := repo.Reference(plumbing.NewRemoteReferenceName("origin", site.Branch), true)
-	if err != nil {
-		return "", fmt.Errorf("failed to get remote reference: %w", err)
-	}
-
-	// Hard reset worktree to the fetched commit
-	worktree, err := repo.Worktree()
-	if err != nil {
-		return "", fmt.Errorf("failed to get worktree: %w", err)
-	}
-
-	err = worktree.Reset(&git.ResetOptions{
-		Commit: remoteRef.Hash(),
-		Mode:   git.HardReset,
-	})
-	if err != nil {
-		return "", fmt.Errorf("git reset failed: %w", err)
-	}
-
-	return remoteRef.Hash().String()[:8], nil
-}
-
-// setupSubpath creates a symlink for subpaths
-// The repo is cloned to .repos/<name> and a symlink from
-// /sites/<name> -> /sites/.repos/<name>/<subpath> is created
-func (s *Syncer) setupSubpath(siteName, repoDir, subpath string) error {
-	// Normalize subpath (remove leading /)
-	subpath = filepath.Clean(subpath)
-	subpath = strings.TrimPrefix(subpath, "/")
-
-	// Source directory: the cloned repo + subpath
-	srcDir := filepath.Join(repoDir, subpath)
-
-	// Check if subpath exists
-	if _, err := os.Stat(srcDir); os.IsNotExist(err) {
-		return fmt.Errorf("subpath %q does not exist in repository", subpath)
-	}
-
-	// Symlink path: /sites/<name> (where nginx expects the files)
-	linkPath := filepath.Join(s.SitesRoot, siteName)
-
-	// Remove old symlink or directory if present
-	if err := removePathOrSymlink(linkPath); err != nil {
-		return fmt.Errorf("failed to remove existing path %s: %w", linkPath, err)
-	}
-
-	// Create symlink
-	return os.Symlink(srcDir, linkPath)
-}
-
 // getSecretValue reads a value from a Kubernetes Secret
 func (s *Syncer) getSecretValue(ctx context.Context, namespace, name, key string) (string, error) {
 	if key == "" {
@@ -338,46 +179,6 @@ func (s *Syncer) getSecretValue(ctx context.Context, namespace, name, key string
 	}
 
 	return string(value), nil
-}
-
-// statusPatch is used to construct JSON patches for StaticSite status updates
-type statusPatch struct {
-	Status statusPatchData `json:"status"`
-}
-
-type statusPatchData struct {
-	Phase      string `json:"phase"`
-	Message    string `json:"message"`
-	LastSync   string `json:"lastSync"`
-	LastCommit string `json:"lastCommit"`
-}
-
-// updateStatus updates the status of the StaticSite
-func (s *Syncer) updateStatus(ctx context.Context, site *staticSiteData, phase, message, commit string) {
-	now := metav1.Now()
-
-	patch := statusPatch{
-		Status: statusPatchData{
-			Phase:      phase,
-			Message:    message,
-			LastSync:   now.Format(time.RFC3339),
-			LastCommit: commit,
-		},
-	}
-
-	patchBytes, err := json.Marshal(patch)
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to marshal status patch", "site", site.Name)
-		return
-	}
-
-	_, err = s.DynamicClient.Resource(staticSiteGVR).
-		Namespace(site.Namespace).
-		Patch(ctx, site.Name, types.MergePatchType, patchBytes, metav1.PatchOptions{}, "status")
-
-	if err != nil {
-		log.FromContext(ctx).Error(err, "Failed to update status", "site", site.Name)
-	}
 }
 
 // staticSiteData is a simplified structure for the Syncer
@@ -436,6 +237,8 @@ func (s *Syncer) RunLoop(ctx context.Context) {
 	ticker := time.NewTicker(s.DefaultInterval)
 	defer ticker.Stop()
 
+	s.removeLeftovers(ctx)
+
 	// Initial sync
 	if err := s.SyncAll(ctx); err != nil {
 		logger.Error(err, "Initial sync failed")
@@ -468,6 +271,8 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 		return fmt.Errorf("failed to list StaticSites: %w", err)
 	}
 
+	s.removeLeftovers(ctx)
+
 	// Set with all active site names
 	activeSites := make(map[string]bool)
 	for _, item := range list.Items {
@@ -483,8 +288,8 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 	for _, entry := range entries {
 		name := entry.Name()
 
-		// Skip .repos directory (handled separately)
-		if name == ".repos" {
+		// Dot entries are .repos and temporary entries, handled by removeLeftovers
+		if strings.HasPrefix(name, ".") {
 			continue
 		}
 
@@ -500,10 +305,13 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 	}
 
 	// Clean up .repos directories
-	reposDir := filepath.Join(s.SitesRoot, ".repos")
+	reposDir := filepath.Join(s.SitesRoot, reposDirName)
 	if entries, err := os.ReadDir(reposDir); err == nil {
 		for _, entry := range entries {
 			name := entry.Name()
+			if strings.HasPrefix(name, ".") {
+				continue
+			}
 			if !activeSites[name] {
 				repoPath := filepath.Join(reposDir, name)
 				logger.Info("Removing orphaned repo directory", "name", name)
@@ -522,6 +330,10 @@ func (s *Syncer) DeleteSite(ctx context.Context, name string) error {
 	logger := log.FromContext(ctx)
 	logger.Info("Deleting site", "name", name)
 
+	lock := s.locks.get(name)
+	lock.Lock()
+	defer lock.Unlock()
+
 	// Remove symlink/directory in /sites
 	sitePath := filepath.Join(s.SitesRoot, name)
 	if err := removePathOrSymlink(sitePath); err != nil {
@@ -529,7 +341,7 @@ func (s *Syncer) DeleteSite(ctx context.Context, name string) error {
 	}
 
 	// Remove repo directory in .repos
-	repoPath := filepath.Join(s.SitesRoot, ".repos", name)
+	repoPath := filepath.Join(s.SitesRoot, reposDirName, name)
 	if err := removePathOrSymlink(repoPath); err != nil {
 		return fmt.Errorf("failed to remove repo path %s: %w", repoPath, err)
 	}

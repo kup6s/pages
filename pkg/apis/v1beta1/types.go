@@ -13,6 +13,7 @@ import (
 // +kubebuilder:printcolumn:name="PathPrefix",type=string,JSONPath=`.spec.pathPrefix`,priority=1
 // +kubebuilder:printcolumn:name="Repo",type=string,JSONPath=`.spec.repo`
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.phase`
+// +kubebuilder:printcolumn:name="Synced",type=string,JSONPath=`.status.conditions[?(@.type=="Synced")].status`
 // +kubebuilder:printcolumn:name="Age",type=date,JSONPath=`.metadata.creationTimestamp`
 
 // StaticSite defines a static website
@@ -148,6 +149,24 @@ const (
 const (
 	// ConditionCertificateReady indicates whether the TLS certificate is ready
 	ConditionCertificateReady = "CertificateReady"
+
+	// ConditionSynced reports whether the syncer has checked out the configured
+	// revision. Only the syncer writes it; the controller derives phase from it.
+	ConditionSynced = "Synced"
+)
+
+// Reasons of the Synced condition
+const (
+	SyncReasonSynced         = "Synced"
+	SyncReasonSyncing        = "Syncing"
+	SyncReasonCloneFailed    = "CloneFailed"
+	SyncReasonFetchFailed    = "FetchFailed"
+	SyncReasonAuthFailed     = "AuthFailed"
+	SyncReasonSubpathMissing = "SubpathMissing"
+	SyncReasonDiskFull       = "DiskFull"
+	SyncReasonTimeout        = "Timeout"
+	SyncReasonInvalidSpec    = "InvalidSpec"
+	SyncReasonSyncFailed     = "SyncFailed"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

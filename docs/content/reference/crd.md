@@ -27,7 +27,7 @@ The `StaticSite` Custom Resource Definition is the primary API for deploying sta
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `phase` | string | Current phase: `Pending`, `Syncing`, `Ready`, or `Error` |
+| `phase` | string | `Pending`, `Syncing`, `Ready` or `Error`; derived from the `Synced` condition and reconcile errors |
 | `message` | string | Human-readable status message |
 | `lastSync` | timestamp | Timestamp of last successful sync |
 | `lastCommit` | string | Short SHA of the last synced commit |
@@ -46,9 +46,21 @@ The status includes standard Kubernetes conditions:
 | Type | Description |
 |------|-------------|
 | `Ready` | Site is deployed and accessible |
-| `Synced` | Git repository is synced |
+| `Synced` | Git repository is synced (see below) |
 | `IngressReady` | IngressRoute is configured |
 | `CertificateReady` | TLS certificate is issued |
+
+### Synced
+
+Only the syncer writes this condition.
+
+| Status | Reason | Meaning |
+|---|---|---|
+| `True` | `Synced` | The configured branch and path are checked out. `lastCommit` names the commit |
+| `Unknown` | `Syncing` | A clone is running |
+| `False` | `CloneFailed`, `FetchFailed`, `AuthFailed`, `SubpathMissing`, `DiskFull`, `Timeout`, `InvalidSpec`, `SyncFailed` | The last sync failed. The message contains the error. The site keeps serving its last good content |
+
+`kubectl get staticsites` shows the condition in the `Synced` column.
 
 ## Example
 

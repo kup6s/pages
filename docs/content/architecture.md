@@ -101,9 +101,14 @@ All generated resources are created in the system namespace (`kup6s-pages`) for 
 
 Synchronizes Git repositories to the shared PVC:
 - Periodically polls all StaticSite CRDs
-- Clones new repos, pulls existing ones
+- Keeps one clone per StaticSite under `/sites/.repos/<name>`, using the git CLI
+- Clones are shallow partial clones (`--depth 1 --filter=blob:none`).
+  When `spec.path` is set, only that directory is checked out (sparse checkout).
+  Ten sites that each serve one directory of a large repository download about the repository's size once, not ten times.
+- `/sites/<name>` is always a symlink to the served directory of the clone
 - Supports private repos via Secrets
-- Provides HTTP API for webhooks
+- Serves webhooks for instant syncs
+- Reports results in the `Synced` condition and as events, and exposes Prometheus metrics on a separate port
 
 ### nginx
 
@@ -163,27 +168,18 @@ HTTPS Request: www.customer.com/about.html
 
 ### Periodic Sync
 
-```
-┌──────────────┐     ┌─────────────────────────────────────┐
-│   Syncer     │     │  Kubernetes API                     │
-│              │     │                                     │
-│  Timer: 5m   │────▶│  GET /apis/pages.kup6s.com/v1beta1/ │
-│              │     │      staticsites                    │
-└──────┬───────┘     └─────────────────────────────────────┘
-       │
-       │ For each StaticSite:
-       ▼
-┌──────────────────────────────────────────────────────────┐
-│                                                          │
-│  if /sites/<name>/.git exists:                           │
-│      git pull                                            │
-│  else:                                                   │
-│      git clone --depth=1 <repo> /sites/<name>            │
-│                                                          │
-│  Status Update: lastSync, lastCommit                     │
-│                                                          │
-└──────────────────────────────────────────────────────────┘
-```
+For every StaticSite, at each interval:
+
+1. Validate `repo` and `path`, and read the credentials from `secretRef`.
+2. Skip the site with `Synced=False/DiskFull` if the sites volume has less than `--min-free-percent` free.
+3. If `/sites/.repos/<name>` is a complete clone of the configured repo, branch and path, run `git fetch --depth 1` and `git reset --hard`.
+   A failed fetch keeps the current content online.
+   A failed reset triggers a fresh clone.
+4. Otherwise, clone into `/sites/.repos/.tmp-<name>-<random>`, swap it into place, and point `/sites/<name>` at it with an atomic rename.
+   An interrupted clone never replaces a working site.
+5. Replace the clone with a fresh one when `.git` grows beyond twice the checkout plus 50 MiB.
+   Git does not prune old objects of partial clones.
+6. Write `Synced`, `lastSync` and `lastCommit`.
 
 ### Webhook Sync (Instant)
 
@@ -203,7 +199,7 @@ HTTPS Request: www.customer.com/about.html
 │                                                          │
 │  1. Parse Webhook Payload (repo URL, branch)             │
 │  2. Find all StaticSites with this repo URL              │
-│  3. git pull for each matching site                      │
+│  3. Sync each matching site (fetch + reset or re-clone)  │
 │  4. Status Update                                        │
 │                                                          │
 └──────────────────────────────────────────────────────────┘
@@ -274,11 +270,18 @@ namespace for improved security. Users can see resource references via `status.r
 2. **No Build Pipeline**: Only serves static files (build in CI/CD)
 3. **No Preview Deployments**: Each StaticSite is a fixed configuration
 4. **Single Point of Sync**: The Syncer is a single Pod
+5. **Reset in place**: Updates reset the served checkout in place.
+   During the reset, nginx can serve a mix of old and new files (#157).
+6. **Name collisions**: Site directories are keyed by name only.
+   Two StaticSites with the same name in different namespaces collide (#158).
+7. **No partial-clone support**: Git servers without partial-clone support receive `--filter` and ignore it.
+   The syncer then downloads the full repository.
+   If such a site serves a small `path` of a very large repository, the clone can exceed the growth threshold right after cloning.
+   The syncer then clones the site fresh on every new commit.
 
 ## Future Extensions
 
 - **Preview Deployments**: Automatic sites for Pull Requests
 - **Build Integration**: Optional build container before sync
-- **Metrics**: Prometheus metrics for sync status and errors
 - **UI**: Web dashboard for site management
 - **Multi-Cluster**: Sync to multiple clusters

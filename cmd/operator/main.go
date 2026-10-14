@@ -16,6 +16,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
+	ctrlmetrics "sigs.k8s.io/controller-runtime/pkg/metrics"
 	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	pagesv1 "github.com/kup6s/pages/pkg/apis/v1beta1"
@@ -116,6 +117,9 @@ func main() {
 		setupLog.Error(err, "unable to create controller", "controller", "StaticSite")
 		os.Exit(1)
 	}
+
+	// Register metrics collector
+	ctrlmetrics.Registry.MustRegister(&controller.SiteMetricsCollector{Reader: mgr.GetCache()})
 
 	// Health Checks
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {

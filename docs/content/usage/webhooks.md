@@ -68,7 +68,7 @@ curl -H "X-API-Key: $TOKEN" -X POST https://webhook.pages.example.com/sync/pages
 
 1. Check the syncer logs:
    ```bash
-   kubectl logs -n kup6s-pages -l app=pages-syncer
+   kubectl logs -n kup6s-pages -l app.kubernetes.io/component=syncer
    ```
 
 2. Verify the webhook secret matches in both Helm values and Git provider settings
