@@ -66,3 +66,22 @@ tests:
       - equal:
           path: metadata.labels["app.kubernetes.io/component"]
           value: nginx
+
+  - it: should roll the pods when the nginx config changes
+    asserts:
+      - matchRegex:
+          path: spec.template.metadata.annotations["checksum/config"]
+          pattern: '^[0-9a-f]{64}$'
+
+  - it: should keep the config checksum next to custom pod annotations
+    set:
+      nginx:
+        podAnnotations:
+          example.com/team: web
+    asserts:
+      - equal:
+          path: spec.template.metadata.annotations["example.com/team"]
+          value: web
+      - matchRegex:
+          path: spec.template.metadata.annotations["checksum/config"]
+          pattern: '^[0-9a-f]{64}$'
