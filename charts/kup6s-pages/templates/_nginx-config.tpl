@@ -20,12 +20,26 @@ map $request_uri $site_path {
     "~^/[^/?]+(?<path>/[^?]*)" $path;
 }
 
+# All sites share root /sites, so a request must stay inside the /<site>
+# segment that addPrefix put in front of it. nginx decodes and resolves
+# dot-dot segments before mapping the path to a file, so any of them,
+# encoded or not, and any encoded slash could reach another site or the
+# repository checkouts. Real file paths need neither.
+map $request_uri $leaves_site {
+    default 0;
+    "~*^[^?]*(%2f|/(\.|%2e)(\.|%2e)(/|\?|$))" 1;
+}
+
 server {
     listen 80;
     server_name _;
 
     # Redirects stay relative, so the browser keeps scheme and host.
     absolute_redirect off;
+
+    if ($leaves_site) {
+        return 400;
+    }
 
     # Health Check Endpoint
     location /health {
@@ -42,6 +56,12 @@ server {
     # Served: /sites/customer-website/about.html
 
     root /sites;
+
+    # Never serve the repository checkouts or the syncer's temporary
+    # entries. Site names cannot start with a dot.
+    location ~ ^/\. {
+        return 404;
+    }
 
     # Never serve git metadata (.git directory or .git file)
     location ~ (^|/)\.git(/|$) {
