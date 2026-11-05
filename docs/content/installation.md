@@ -56,6 +56,19 @@ kup6s-pages-nginx-xxx                     1/1     Running   0          1m
 kup6s-pages-nginx-yyy                     1/1     Running   0          1m
 ```
 
+## Upgrading the CRD
+
+Helm installs the CRD from the chart's `crds/` directory only on the first install; `helm upgrade` leaves it as it is.
+Apply it yourself before upgrading the chart:
+
+```bash
+helm show crds oci://ghcr.io/kup6s/kup6s-pages --version <version> | kubectl apply --server-side -f -
+```
+
+With an older CRD the API server does not know new fields.
+`kubectl apply` rejects them, but a client that does not ask for strict field validation gets them dropped with at most a warning.
+A site set to `visibility: Private` that way stays public.
+
 ## Upgrading to the git CLI syncer (#153)
 
 The syncer now runs the `git` command line with sparse, blobless clones instead of go-git.

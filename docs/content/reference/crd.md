@@ -19,9 +19,12 @@ The `StaticSite` Custom Resource Definition is the primary API for deploying sta
 | `path` | string | No | `/` | Subpath in repo to serve |
 | `pathPrefix` | string | No | - | URL path prefix (requires domain) |
 | `domain` | string | No | `<name>.<pages-domain>` | Custom domain |
+| `visibility` | string | No | `Public` | `Public` or `Private`. A private site gets no IngressRoute, Middleware, Certificate or auto-generated domain; see [Private Sites]({{< relref "/usage/private-sites" >}}) |
 | `secretRef.name` | string | No | - | Secret name with Git credentials |
 | `secretRef.key` | string | No | `password` | Key in Secret for the token |
 | `syncInterval` | string | No | `5m` | How often to pull updates |
+
+The API server rejects a `Private` site that sets `domain` or `pathPrefix`.
 
 ## Status Fields
 
@@ -31,7 +34,8 @@ The `StaticSite` Custom Resource Definition is the primary API for deploying sta
 | `message` | string | Human-readable status message |
 | `lastSync` | timestamp | Timestamp of last successful sync |
 | `lastCommit` | string | Short SHA of the last synced commit |
-| `url` | string | Full URL of the deployed site |
+| `url` | string | Full URL of the deployed site; empty for private sites |
+| `internalURL` | string | In-cluster address of the site, served by nginx, e.g. `http://kup6s-pages-nginx.kup6s-pages.svc/my-website/` |
 | `syncToken` | string | Auto-generated token for API authentication |
 | `conditions` | []Condition | Standard Kubernetes conditions |
 | `resources.ingressRoute` | string | Name of created IngressRoute |
@@ -39,16 +43,16 @@ The `StaticSite` Custom Resource Definition is the primary API for deploying sta
 | `resources.stripMiddleware` | string | Name of strip middleware (for pathPrefix) |
 | `resources.certificate` | string | Name of created Certificate |
 
+Private sites have no `resources`.
+
 ## Conditions
 
 The status includes standard Kubernetes conditions:
 
 | Type | Description |
 |------|-------------|
-| `Ready` | Site is deployed and accessible |
 | `Synced` | Git repository is synced (see below) |
-| `IngressReady` | IngressRoute is configured |
-| `CertificateReady` | TLS certificate is issued |
+| `CertificateReady` | TLS certificate is issued; mirrors the Certificate's `Ready` condition. Not set for private sites and for auto-generated domains in wildcard TLS mode |
 
 ### Synced
 
