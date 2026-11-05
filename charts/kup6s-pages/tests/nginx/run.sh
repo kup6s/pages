@@ -20,10 +20,11 @@ helm template t "$CHART_DIR" --set "syncer.allowedHosts={example.com}" --show-on
     | yq '.data["default.conf"]' > "$WORK/default.conf"
 IMAGE="$(yq '.nginx.image.registry + "/" + .nginx.image.repository + ":" + .nginx.image.tag' "$CHART_DIR/values.yaml")"
 
-mkdir -p "$WORK/sites/at19/programm" "$WORK/sites/at19/über uns" "$WORK/sites/docs/reference"
+mkdir -p "$WORK/sites/at19/programm" "$WORK/sites/at19/über uns" "$WORK/sites/docs/reference" "$WORK/sites/.repos/docs/src"
 echo "at19" > "$WORK/sites/at19/index.html"
 echo "programm" > "$WORK/sites/at19/programm/index.html"
 echo "reference" > "$WORK/sites/docs/reference/index.html"
+echo "source" > "$WORK/sites/.repos/docs/src/notes.txt"
 chmod -R a+rX "$WORK"
 
 docker run -d --name "$NAME" -p "127.0.0.1:$PORT:80" \
@@ -41,7 +42,7 @@ failures=0
 # expect <description> <expected status> <expected Location or ""> <path> [header]
 expect() {
     local desc="$1" want_status="$2" want_location="$3" path="$4" header="${5:-}"
-    local args=(-s -o /dev/null -D - "http://127.0.0.1:$PORT$path")
+    local args=(-s --path-as-is -o /dev/null -D - "http://127.0.0.1:$PORT$path")
     if [ -n "$header" ]; then
         args+=(-H "$header")
     fi
@@ -67,6 +68,18 @@ expect "site without path prefix redirects without the site name" 301 /reference
 expect "a protocol-relative prefix is ignored" 301 /reference/ /docs/reference "X-Forwarded-Prefix: //evil.example"
 expect "a prefix with a scheme is ignored" 301 /reference/ /docs/reference "X-Forwarded-Prefix: https://evil.example"
 expect "a missing directory stays 404" 404 "" /docs/missing
+
+# Every site shares root /sites, so a request must never leave the
+# /<site> segment that addPrefix put in front of it.
+expect "a dot-dot segment is rejected" 400 "" /at19/../docs/reference/
+expect "an encoded dot-dot segment is rejected" 400 "" /at19/%2e%2e/docs/reference/
+expect "a mixed-case encoded dot-dot segment is rejected" 400 "" /at19/.%2E/docs/reference/
+expect "an encoded slash is rejected" 400 "" /at19/..%2fdocs/reference/
+expect "an upper-case encoded slash is rejected" 400 "" /at19/..%2Fdocs/reference/
+expect "repository checkouts are not served" 404 "" /.repos/docs/src/notes.txt
+expect "repository checkouts are not reachable by traversal" 400 "" /at19/%2e%2e%2f.repos/docs/src/notes.txt
+expect "dots inside a file name are allowed" 404 "" /at19/a..b.html
+expect "encoded characters in the query are allowed" 200 "" "/at19/?next=%2Fdocs%2F..%2F"
 
 if [ "$failures" -gt 0 ]; then
     echo "$failures check(s) failed"

@@ -169,4 +169,8 @@ For environments requiring additional restrictions:
    A repository URL that redirects fails with `CloneFailed`, so configure the final URL.
 6. **git runs isolated** from system and user configuration (`GIT_CONFIG_NOSYSTEM`, `GIT_CONFIG_GLOBAL=/dev/null`), never prompts, and may only use `http` and `https`.
 7. **nginx never serves `.git`**: requests for a `.git` file or directory return 404.
-8. **No shared clones**: every StaticSite has its own clone and credentials.
+   The repository checkouts under `.repos` and the syncer's temporary entries return 404 as well.
+8. **Each request stays in its site**: all sites share one nginx root, so nginx rejects with 400 any path containing a dot-dot segment (plain or percent-encoded) or an encoded slash.
+   Otherwise a request to one site's domain could read another site's files or the repository checkouts.
+   The query string is not affected.
+9. **No shared clones**: every StaticSite has its own clone and credentials.

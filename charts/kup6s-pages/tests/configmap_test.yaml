@@ -117,6 +117,18 @@ tests:
           path: data["default.conf"]
           pattern: 'location ~ \(\^\|/\)\\\.git\(/\|\$\)'
 
+  - it: should reject requests that leave their site directory
+    asserts:
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: '(?s)map \$request_uri \$leaves_site \{.*server \{.*if \(\$leaves_site\) \{\s+return 400;'
+
+  - it: should never serve repository checkouts
+    asserts:
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: 'location ~ \^/\\\. \{\s+return 404;'
+
   - it: should deny git metadata before the asset rule inside location /
     asserts:
       - matchRegex:
