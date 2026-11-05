@@ -1793,7 +1793,7 @@ func (s *selectiveErrorNamespaceableResource) ApplyStatus(ctx context.Context, n
 	return obj, nil
 }
 
-func TestCleanupOrphanedCertificate(t *testing.T) {
+func TestReleaseCertificate(t *testing.T) {
 	tests := []struct {
 		name            string
 		deletingSite    *pagesv1.StaticSite
@@ -1905,7 +1905,7 @@ func TestCleanupOrphanedCertificate(t *testing.T) {
 				NginxNamespace: "kup6s-pages",
 			}
 
-			err := r.cleanupOrphanedCertificate(context.Background(), tt.deletingSite)
+			err := r.releaseCertificate(context.Background(), tt.deletingSite, tt.deletingSite.Spec.Domain)
 
 			if tt.wantErr && err == nil {
 				t.Error("expected error, got nil")
