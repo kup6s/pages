@@ -10,6 +10,7 @@ import (
 // +kubebuilder:object:root=true
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:name="Domain",type=string,JSONPath=`.spec.domain`
+// +kubebuilder:printcolumn:name="Visibility",type=string,JSONPath=`.spec.visibility`
 // +kubebuilder:printcolumn:name="PathPrefix",type=string,JSONPath=`.spec.pathPrefix`,priority=1
 // +kubebuilder:printcolumn:name="Repo",type=string,JSONPath=`.spec.repo`
 // +kubebuilder:printcolumn:name="Status",type=string,JSONPath=`.status.phase`
@@ -26,6 +27,7 @@ type StaticSite struct {
 }
 
 // StaticSiteSpec defines the desired configuration
+// +kubebuilder:validation:XValidation:rule="!has(self.visibility) || self.visibility != 'Private' || (!has(self.domain) && (!has(self.pathPrefix) || size(self.pathPrefix) == 0))",message="a Private site cannot have domain or pathPrefix"
 type StaticSiteSpec struct {
 	// Repo is the Git repository URL (required)
 	// +kubebuilder:validation:Required
@@ -57,6 +59,15 @@ type StaticSiteSpec struct {
 	// +kubebuilder:validation:Pattern=`^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$`
 	// +optional
 	Domain string `json:"domain,omitempty"`
+
+	// Visibility controls whether the site is exposed at the public ingress (default: Public)
+	// Private sites get no IngressRoute, Middleware, Certificate or auto-generated domain;
+	// they are synced and served by nginx inside the cluster only.
+	// Cannot be combined with Domain or PathPrefix.
+	// +kubebuilder:validation:Enum=Public;Private
+	// +kubebuilder:default=Public
+	// +optional
+	Visibility Visibility `json:"visibility,omitempty"`
 
 	// SecretRef references a Secret with Git credentials
 	// For private repos
@@ -96,9 +107,14 @@ type StaticSiteStatus struct {
 	// +optional
 	LastCommit string `json:"lastCommit,omitempty"`
 
-	// URL of the published site
+	// URL of the published site (empty for private sites)
 	// +optional
 	URL string `json:"url,omitempty"`
+
+	// InternalURL is the in-cluster address of the site, served by nginx
+	// A proxy in front of a private site points its root here.
+	// +optional
+	InternalURL string `json:"internalURL,omitempty"`
 
 	// Conditions for detailed status information
 	// +optional
@@ -132,6 +148,22 @@ type ManagedResources struct {
 	// Certificate is the namespace/name of the cert-manager Certificate (if custom domain)
 	// +optional
 	Certificate string `json:"certificate,omitempty"`
+}
+
+// Visibility controls whether a site gets a public route
+type Visibility string
+
+const (
+	// VisibilityPublic exposes the site at the public ingress
+	VisibilityPublic Visibility = "Public"
+	// VisibilityPrivate keeps the site in-cluster only
+	VisibilityPrivate Visibility = "Private"
+)
+
+// IsPrivate reports whether the site has no public route.
+// An empty Visibility (objects stored before the field existed) counts as public.
+func (s *StaticSite) IsPrivate() bool {
+	return s.Spec.Visibility == VisibilityPrivate
 }
 
 // Phase describes the lifecycle status

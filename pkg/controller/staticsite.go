@@ -5,8 +5,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	stderrors "errors"
 	"fmt"
 	"io"
+	"net/url"
 	"strings"
 	"time"
 
@@ -180,6 +182,10 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return *result, err
 	}
 
+	if site.IsPrivate() {
+		return r.reconcilePrivate(ctx, site)
+	}
+
 	if err := validatePathPrefix(site); err != nil {
 		return r.setError(ctx, site, "ValidationFailed", err)
 	}
@@ -197,7 +203,45 @@ func (r *StaticSiteReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return r.setError(ctx, site, "TLSFailed", err)
 	}
 
+	// A domain change leaves the Certificate of the old domain behind.
+	if previous := statusDomain(site); previous != "" && previous != domain {
+		if err := r.releaseCertificate(ctx, site, previous); err != nil {
+			logger.Error(err, "Failed to release certificate of previous domain", "domain", previous)
+		}
+	}
+
 	return r.updateFinalStatus(ctx, site, domain)
+}
+
+// reconcilePrivate removes everything that made the site public and records
+// its in-cluster address. The syncer keeps the content in sync either way.
+func (r *StaticSiteReconciler) reconcilePrivate(ctx context.Context, site *pagesv1.StaticSite) (ctrl.Result, error) {
+	if site.Spec.Domain != "" || site.Spec.PathPrefix != "" {
+		return r.setError(ctx, site, "ValidationFailed", fmt.Errorf("a Private site cannot have domain or pathPrefix"))
+	}
+
+	if err := r.removePublicResources(ctx, site); err != nil {
+		return r.setError(ctx, site, "CleanupFailed", err)
+	}
+
+	site.Status.Phase, site.Status.Message = syncPhase(site)
+	site.Status.URL = ""
+	site.Status.InternalURL = r.internalURL(site)
+	site.Status.Resources = nil
+	meta.RemoveStatusCondition(&site.Status.Conditions, pagesv1.ConditionCertificateReady)
+
+	if err := r.Status().Update(ctx, site); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	r.Recorder.Eventf(site, nil, "Normal", "Configured", "ConfigurePrivate", "Private site served in-cluster at %s", site.Status.InternalURL)
+
+	return ctrl.Result{RequeueAfter: statusCheckInterval}, nil
+}
+
+// internalURL is the in-cluster address of the site behind nginx.
+func (r *StaticSiteReconciler) internalURL(site *pagesv1.StaticSite) string {
+	return fmt.Sprintf("http://%s.%s.svc/%s/", r.NginxServiceName, r.NginxNamespace, site.Name)
 }
 
 // ensureFinalizerAndToken adds the finalizer and generates a sync token if needed.
@@ -268,6 +312,7 @@ func (r *StaticSiteReconciler) reconcileTLS(ctx context.Context, site *pagesv1.S
 // updateFinalStatus sets the final status fields and emits an event.
 func (r *StaticSiteReconciler) updateFinalStatus(ctx context.Context, site *pagesv1.StaticSite, domain string) (ctrl.Result, error) {
 	site.Status.Phase, site.Status.Message = syncPhase(site)
+	site.Status.InternalURL = r.internalURL(site)
 	if site.Spec.PathPrefix != "" {
 		site.Status.URL = fmt.Sprintf("https://%s%s", domain, site.Spec.PathPrefix)
 	} else {
@@ -307,6 +352,11 @@ func (r *StaticSiteReconciler) reconcileMiddleware(ctx context.Context, site *pa
 	// If pathPrefix is set, also create stripPrefix middleware
 	if site.Spec.PathPrefix != "" {
 		if err := r.createStripPrefixMiddleware(ctx, site); err != nil {
+			return err
+		}
+	} else if site.Status.Resources != nil && site.Status.Resources.StripMiddleware != "" {
+		// The prefix was removed, so its stripPrefix middleware goes too
+		if err := r.deleteIfExists(ctx, middlewareGVR, "Middleware", resourceNameWithSuffix(site, "strip")); err != nil {
 			return err
 		}
 	}
@@ -466,7 +516,7 @@ func (r *StaticSiteReconciler) reconcileIngressRoute(ctx context.Context, site *
 								// Reference nginx directly - same namespace now
 								"name":      r.NginxServiceName,
 								"namespace": r.NginxNamespace,
-								"port":      80,
+								"port":      int64(80),
 							},
 						},
 					},
@@ -655,44 +705,9 @@ func (r *StaticSiteReconciler) handleDeletion(ctx context.Context, site *pagesv1
 	if controllerutil.ContainsFinalizer(site, finalizerName) {
 		logger.Info("Cleaning up StaticSite", "name", site.Name)
 
-		// Delete IngressRoute
-		irName := resourceName(site)
-		if err := r.DynamicClient.Resource(ingressRouteGVR).Namespace(r.NginxNamespace).Delete(ctx, irName, metav1.DeleteOptions{}); err != nil {
-			if !errors.IsNotFound(err) {
-				logger.Error(err, "Failed to delete IngressRoute", "name", irName)
-			}
-		} else {
-			logger.Info("Deleted IngressRoute", "name", irName)
-		}
-
-		// Delete addPrefix Middleware
-		prefixMwName := resourceNameWithSuffix(site, "prefix")
-		if err := r.DynamicClient.Resource(middlewareGVR).Namespace(r.NginxNamespace).Delete(ctx, prefixMwName, metav1.DeleteOptions{}); err != nil {
-			if !errors.IsNotFound(err) {
-				logger.Error(err, "Failed to delete Middleware", "name", prefixMwName)
-			}
-		} else {
-			logger.Info("Deleted Middleware", "name", prefixMwName)
-		}
-
-		// Delete stripPrefix Middleware (if pathPrefix was set)
-		if site.Spec.PathPrefix != "" {
-			stripMwName := resourceNameWithSuffix(site, "strip")
-			if err := r.DynamicClient.Resource(middlewareGVR).Namespace(r.NginxNamespace).Delete(ctx, stripMwName, metav1.DeleteOptions{}); err != nil {
-				if !errors.IsNotFound(err) {
-					logger.Error(err, "Failed to delete Middleware", "name", stripMwName)
-				}
-			} else {
-				logger.Info("Deleted Middleware", "name", stripMwName)
-			}
-		}
-
-		// Certificates are shared - cleanup only if no other sites use this domain
-		if site.Spec.Domain != "" {
-			if err := r.cleanupOrphanedCertificate(ctx, site); err != nil {
-				logger.Error(err, "Failed to cleanup certificate")
-				// Don't block deletion for this
-			}
+		if err := r.removePublicResources(ctx, site); err != nil {
+			// Don't block deletion for this
+			logger.Error(err, "Failed to remove public resources")
 		}
 
 		// Remove finalizer
@@ -705,39 +720,107 @@ func (r *StaticSiteReconciler) handleDeletion(ctx context.Context, site *pagesv1
 	return ctrl.Result{}, nil
 }
 
-// cleanupOrphanedCertificate removes the certificate if no other sites use this domain
-func (r *StaticSiteReconciler) cleanupOrphanedCertificate(ctx context.Context, deletingSite *pagesv1.StaticSite) error {
-	logger := log.FromContext(ctx)
-	domain := deletingSite.Spec.Domain
+// removePublicResources deletes the IngressRoute, both Middlewares and the
+// Certificate of the domain the site was published at. It goes by resource
+// names and status rather than by the spec, because the spec may no longer
+// say what was created (a removed pathPrefix, a site that turned private).
+func (r *StaticSiteReconciler) removePublicResources(ctx context.Context, site *pagesv1.StaticSite) error {
+	var errs []error
 
-	// List all StaticSites
+	if err := r.deleteIfExists(ctx, ingressRouteGVR, "IngressRoute", resourceName(site)); err != nil {
+		errs = append(errs, err)
+	}
+	for _, suffix := range []string{"prefix", "strip"} {
+		if err := r.deleteIfExists(ctx, middlewareGVR, "Middleware", resourceNameWithSuffix(site, suffix)); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	// Certificates are shared - cleanup only if no other sites use this domain
+	if domain := r.publishedDomain(site); domain != "" {
+		if err := r.releaseCertificate(ctx, site, domain); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	return stderrors.Join(errs...)
+}
+
+// deleteIfExists deletes a resource in the system namespace; a missing one counts as deleted.
+func (r *StaticSiteReconciler) deleteIfExists(ctx context.Context, gvr schema.GroupVersionResource, kind, name string) error {
+	err := r.DynamicClient.Resource(gvr).Namespace(r.NginxNamespace).Delete(ctx, name, metav1.DeleteOptions{})
+	if errors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to delete %s %s: %w", kind, name, err)
+	}
+	log.FromContext(ctx).Info("Deleted "+kind, "name", name)
+	return nil
+}
+
+// statusDomain returns the host the site was last published at, or "".
+func statusDomain(site *pagesv1.StaticSite) string {
+	u, err := url.Parse(site.Status.URL)
+	if err != nil {
+		return ""
+	}
+	return u.Hostname()
+}
+
+// publishedDomain returns the domain the site was last published at. A
+// public site that never got that far may still have created resources
+// for the domain its spec asks for.
+func (r *StaticSiteReconciler) publishedDomain(site *pagesv1.StaticSite) string {
+	if domain := statusDomain(site); domain != "" {
+		return domain
+	}
+	if site.IsPrivate() {
+		return ""
+	}
+	domain, _ := r.determineDomain(site)
+	return domain
+}
+
+// certificateDomain returns the domain of the Certificate the site needs, or
+// "" if it needs none: private sites, and auto-generated domains in wildcard mode.
+func (r *StaticSiteReconciler) certificateDomain(site *pagesv1.StaticSite) string {
+	switch {
+	case site.IsPrivate():
+		return ""
+	case site.Spec.Domain != "":
+		return site.Spec.Domain
+	case r.PagesTlsMode == TlsModeWildcard || r.PagesDomain == "":
+		return ""
+	default:
+		return fmt.Sprintf("%s.%s", site.Name, r.PagesDomain)
+	}
+}
+
+// releaseCertificate deletes the Certificate for domain unless another site still needs it
+func (r *StaticSiteReconciler) releaseCertificate(ctx context.Context, releasing *pagesv1.StaticSite, domain string) error {
+	logger := log.FromContext(ctx)
+
 	siteList := &pagesv1.StaticSiteList{}
 	if err := r.List(ctx, siteList); err != nil {
 		return err
 	}
 
-	// Check if any other site uses this domain
-	for _, site := range siteList.Items {
-		if site.Name == deletingSite.Name && site.Namespace == deletingSite.Namespace {
-			continue // Skip the site being deleted
+	for i := range siteList.Items {
+		site := &siteList.Items[i]
+		if site.Name == releasing.Name && site.Namespace == releasing.Namespace {
+			continue
 		}
-		if site.Spec.Domain == domain {
-			// Another site uses this domain, keep the certificate
+		if !site.DeletionTimestamp.IsZero() {
+			continue
+		}
+		if r.certificateDomain(site) == domain {
 			logger.V(1).Info("Certificate still in use", "domain", domain, "usedBy", site.Name)
 			return nil
 		}
 	}
 
-	// No other sites use this domain, delete the certificate from system namespace
-	certName := sanitizeDomainForResourceName(domain) + "-tls"
-	logger.Info("Deleting orphaned certificate", "name", certName, "domain", domain)
-
-	err := r.DynamicClient.Resource(certificateGVR).Namespace(r.NginxNamespace).Delete(ctx, certName, metav1.DeleteOptions{})
-	if err != nil && !errors.IsNotFound(err) {
-		return err
-	}
-
-	return nil
+	return r.deleteIfExists(ctx, certificateGVR, "Certificate", sanitizeDomainForResourceName(domain)+"-tls")
 }
 
 // setError sets the error status and returns a Result
@@ -799,7 +882,7 @@ func (r *StaticSiteReconciler) mapCertificateToStaticSites(ctx context.Context, 
 
 	var requests []reconcile.Request
 	for _, site := range siteList.Items {
-		if site.Spec.Domain == domain {
+		if r.certificateDomain(&site) == domain {
 			requests = append(requests, reconcile.Request{
 				NamespacedName: types.NamespacedName{
 					Name:      site.Name,

@@ -121,6 +121,13 @@ Some resources are shared across multiple StaticSites:
 The operator uses labels to track ownership and performs explicit orphan checks before
 deletion to prevent accidental removal of resources still in use.
 
+## Private Sites
+
+A site with `visibility: Private` has no route at the public ingress.
+That is the only difference: nginx serves it like any other site, and any pod that can reach the nginx Service can read it.
+The chart ships no NetworkPolicy.
+To restrict who can read a private site, limit access to the nginx Service, for example with a NetworkPolicy that only admits the proxy in front of the site.
+
 ## Cross-Namespace Secret Access (Syncer)
 
 The syncer can be granted secrets access in user namespaces via RoleBindings:
