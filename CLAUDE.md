@@ -15,7 +15,7 @@ Traffic: Traefik → addPrefix middleware → nginx → `/sites/<name>/`
 ```
 cmd/operator/        # Operator entrypoint
 cmd/syncer/          # Syncer entrypoint
-pkg/apis/v1alpha1/   # StaticSite CRD types
+pkg/apis/v1beta1/    # StaticSite CRD types
 pkg/controller/      # Reconciliation logic
 pkg/syncer/          # Git sync + webhook server
 charts/kup6s-pages/  # Helm chart
@@ -32,7 +32,6 @@ go test ./...
 helm unittest charts/kup6s-pages
 
 # Local development
-go run ./cmd/operator --pages-domain=pages.local
 go run ./cmd/syncer --sites-root=/tmp/sites
 
 # Install via Helm
@@ -43,7 +42,12 @@ helm install pages oci://ghcr.io/kup6s/kup6s-pages
 
 - CRD: `staticsites.pages.kup6s.com/v1beta1`
 - Namespace: `kup6s-pages`
-- Service: `static-sites-nginx` (HTTP), `pages-syncer` (webhooks)
+- Service: `<release>-nginx` (HTTP), `<release>-syncer` (webhooks)
+- The CRD in `charts/kup6s-pages/crds/` is maintained by hand. Do not regenerate it with
+  controller-gen: its output differs (validation patterns, short names, columns).
+  Change the YAML and the types together; `pkg/apis/v1beta1/crd_test.go` checks they match.
+- The operator always runs with leader election, so it does not start outside a cluster
+  (`go run ./cmd/operator` fails with "unable to find leader election namespace").
 
 ## Dependencies
 
@@ -52,8 +56,10 @@ helm install pages oci://ghcr.io/kup6s/kup6s-pages
 
 # Issues/ Commits
 
-- Do not and NEVER mention AI/Claude.
+- Commits, PRs, issues and comments written with AI assistance end with an
+  `Assisted-by: <model>` line, e.g. `Assisted-by: Claude Opus 5.5`.
+  No `Co-Authored-By`, no noreply address.
 - Work TDD
 - Always run `make lint` before committing.
-- Always pull main firscreate a branch with worktree under `./.worktrees` in the project and PR if ready.
-- cleanup after merge
+- Always pull main first, create a branch with a worktree under `./.worktrees` in the project, and open a PR when ready.
+- Clean up after merge.

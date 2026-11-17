@@ -97,7 +97,8 @@ jobs:
       - name: Setup Hugo
         uses: peaceiris/actions-hugo@v3
         with:
-          hugo-version: 'latest'
+          # 0.170 dropped the extended edition; the theme's Sass then needs Dart Sass (#181)
+          hugo-version: '0.169.0'
           extended: true
 
       - name: Build docs

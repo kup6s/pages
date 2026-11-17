@@ -25,8 +25,9 @@ rules:
     resources: ["staticsites/finalizers"]
     verbs: ["update"]
 
-  # Events - for recording reconciliation events on StaticSites in any namespace
-  - apiGroups: [""]
+  # Events - for recording reconciliation events on StaticSites in any namespace.
+  # The recorder writes events.k8s.io; the core group stays for older recorders.
+  - apiGroups: ["", "events.k8s.io"]
     resources: ["events"]
     verbs: ["create", "patch"]
 {{- end }}

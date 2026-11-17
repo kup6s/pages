@@ -39,6 +39,16 @@ tests:
             resources: ["staticsites"]
             verbs: ["get", "list", "watch", "update", "patch"]
 
+  - it: should let the operator record events through events.k8s.io
+    template: templates/clusterrole-operator.yaml
+    asserts:
+      - contains:
+          path: rules
+          content:
+            apiGroups: ["", "events.k8s.io"]
+            resources: ["events"]
+            verbs: ["create", "patch"]
+
   - it: should create syncer clusterrole with correct API group
     template: templates/clusterrole-syncer.yaml
     asserts:

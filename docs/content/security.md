@@ -49,7 +49,7 @@ verbs: ["get", "list", "watch", "update", "patch"]  # update/patch for finalizer
 verbs: ["get", "update", "patch"]
 # StaticSite finalizers
 verbs: ["update"]
-# Events
+# Events (core and events.k8s.io)
 verbs: ["create", "patch"]
 ```
 

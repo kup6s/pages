@@ -17,7 +17,7 @@ kup6s-pages deploys static websites from Git repositories to Kubernetes. A singl
 
 ## Prerequisites
 
-- Kubernetes 1.24+
+- Kubernetes 1.27+
 - Helm 3.0+
 - Traefik ingress controller
 - cert-manager (for TLS)
