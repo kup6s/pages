@@ -285,6 +285,22 @@ nginx:
                 app.kubernetes.io/component: nginx
             topologyKey: kubernetes.io/hostname
 
+  # -- Topology spread constraints. The default keeps the replicas of one revision on
+  # different nodes, so a rollout also separates replicas that share a node
+  # (matchLabelKeys, Kubernetes 1.27+). Nodes the pod cannot run on (cordoned, tainted,
+  # unreachable) do not count: the replicas share a node while it is the only one left.
+  # Add minDomains: 2 to make a replica wait for a second node instead.
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: DoNotSchedule
+      nodeTaintsPolicy: Honor
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/component: nginx
+      matchLabelKeys:
+        - pod-template-hash
+
   # -- Liveness probe configuration
   livenessProbe:
     httpGet:

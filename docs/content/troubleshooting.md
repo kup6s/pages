@@ -167,6 +167,7 @@ kubectl describe pod <pod-name> -n kup6s-pages
 - PVC not bound (check `storage.storageClassName`)
 - Resource limits too low
 - Security context issues (non-root user, read-only filesystem)
+- An nginx pod stays `Pending` with the event `didn't match pod topology spread constraints`: the nodes that can take the pod already run a replica, and another schedulable node cannot take it, for example because it lacks free resources. With `minDomains: 2` this is expected while only one node is schedulable. See [Architecture]({{< relref "/architecture#nginx" >}})
 
 ## View All Resources
 

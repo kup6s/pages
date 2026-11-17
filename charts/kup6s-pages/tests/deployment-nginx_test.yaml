@@ -38,6 +38,60 @@ tests:
       - isNotEmpty:
           path: spec.template.spec.affinity.podAntiAffinity
 
+  - it: should keep the replicas of one revision on different schedulable nodes by default
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints
+          value:
+            - maxSkew: 1
+              topologyKey: kubernetes.io/hostname
+              whenUnsatisfiable: DoNotSchedule
+              nodeTaintsPolicy: Honor
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/component: nginx
+              matchLabelKeys:
+                - pod-template-hash
+
+  - it: should select its own pods in the default spread constraint
+    asserts:
+      - isSubset:
+          path: spec.template.metadata.labels
+          content:
+            app.kubernetes.io/component: nginx
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints[0].labelSelector.matchLabels
+          value:
+            app.kubernetes.io/component: nginx
+
+  - it: should render no spread constraints for an empty list
+    set:
+      nginx.topologySpreadConstraints: []
+    asserts:
+      - notExists:
+          path: spec.template.spec.topologySpreadConstraints
+
+  - it: should render custom spread constraints instead of the default
+    set:
+      nginx:
+        topologySpreadConstraints:
+          - maxSkew: 2
+            topologyKey: topology.kubernetes.io/zone
+            whenUnsatisfiable: ScheduleAnyway
+            labelSelector:
+              matchLabels:
+                example.com/tier: web
+    asserts:
+      - equal:
+          path: spec.template.spec.topologySpreadConstraints
+          value:
+            - maxSkew: 2
+              topologyKey: topology.kubernetes.io/zone
+              whenUnsatisfiable: ScheduleAnyway
+              labelSelector:
+                matchLabels:
+                  example.com/tier: web
+
   - it: should have liveness probe
     asserts:
       - equal:

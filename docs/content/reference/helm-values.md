@@ -96,11 +96,31 @@ Complete reference for all Helm chart configuration options.
 | `nginx.nodeSelector` | `{}` | Node selector |
 | `nginx.tolerations` | `[]` | Tolerations |
 | `nginx.affinity` | (pod anti-affinity) | Affinity rules |
+| `nginx.topologySpreadConstraints` | (spread over nodes, see below) | Topology spread constraints. Set to `[]` to rely on the preferred pod anti-affinity alone |
 | `nginx.service.type` | `ClusterIP` | Service type |
 | `nginx.service.port` | `80` | Service port |
 | `nginx.customConfig` | `""` | Custom nginx configuration. Replaces the whole default `server` block, including the directory redirect that uses `X-Forwarded-Prefix` |
 | `nginx.pdb.enabled` | `true` | Enable PodDisruptionBudget |
 | `nginx.pdb.minAvailable` | `1` | Minimum available pods |
+
+The default of `nginx.topologySpreadConstraints` keeps the replicas of one revision on different nodes:
+
+```yaml
+nginx:
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: DoNotSchedule
+      nodeTaintsPolicy: Honor
+      labelSelector:
+        matchLabels:
+          app.kubernetes.io/component: nginx
+      matchLabelKeys:
+        - pod-template-hash
+```
+
+`matchLabelKeys` needs Kubernetes 1.27 or later.
+See [Architecture]({{< relref "/architecture#nginx" >}}) for what the constraint guarantees and where it stops.
 
 ## Storage
 
