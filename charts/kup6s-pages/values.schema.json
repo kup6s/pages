@@ -350,6 +350,10 @@
           "items": { "type": "object" }
         },
         "affinity": { "type": "object" },
+        "topologySpreadConstraints": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
         "livenessProbe": { "type": "object" },
         "readinessProbe": { "type": "object" },
         "service": {
