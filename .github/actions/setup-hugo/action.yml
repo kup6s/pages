@@ -1,12 +1,20 @@
 name: Set up Hugo
-description: Install the Hugo version the docs are built with
+description: Install the Hugo and Dart Sass versions the docs are built with
 
 runs:
   using: composite
   steps:
-    - name: Install Hugo
-      uses: peaceiris/actions-hugo@v3
-      with:
-        # 0.170 dropped the extended edition; the theme's Sass then needs Dart Sass (#181)
-        hugo-version: '0.169.0'
-        extended: true
+    - name: Install Hugo and Dart Sass
+      shell: bash
+      env:
+        HUGO_VERSION: 0.170.1
+        # Hugo has no Sass transpiler of its own since 0.170; the theme's styles need Dart Sass.
+        DART_SASS_VERSION: 1.108.2
+      run: |
+        mkdir -p "${HOME}/.local/hugo"
+        curl -sSfL "https://github.com/gohugoio/hugo/releases/download/v${HUGO_VERSION}/hugo_${HUGO_VERSION}_linux-amd64.tar.gz" \
+          | tar -xz -C "${HOME}/.local/hugo" hugo
+        curl -sSfL "https://github.com/sass/dart-sass/releases/download/${DART_SASS_VERSION}/dart-sass-${DART_SASS_VERSION}-linux-x64.tar.gz" \
+          | tar -xz -C "${HOME}/.local"
+        echo "${HOME}/.local/hugo" >> "${GITHUB_PATH}"
+        echo "${HOME}/.local/dart-sass" >> "${GITHUB_PATH}"
