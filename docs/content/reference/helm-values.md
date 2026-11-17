@@ -87,7 +87,7 @@ Complete reference for all Helm chart configuration options.
 | `nginx.replicas` | `2` | Number of nginx replicas for HA |
 | `nginx.image.registry` | `docker.io` | Image registry |
 | `nginx.image.repository` | `library/nginx` | Image repository |
-| `nginx.image.tag` | `1.25-alpine` | Image tag |
+| `nginx.image.tag` | `1.29-alpine` | Image tag |
 | `nginx.image.pullPolicy` | `IfNotPresent` | Image pull policy |
 | `nginx.resources.limits.cpu` | `200m` | CPU limit |
 | `nginx.resources.limits.memory` | `128Mi` | Memory limit |

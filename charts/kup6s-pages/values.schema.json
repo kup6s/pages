@@ -316,7 +316,7 @@
           "properties": {
             "registry": { "type": "string", "default": "docker.io" },
             "repository": { "type": "string", "default": "library/nginx" },
-            "tag": { "type": "string", "default": "1.25-alpine" },
+            "tag": { "type": "string", "default": "1.29-alpine" },
             "pullPolicy": {
               "type": "string",
               "enum": ["Always", "IfNotPresent", "Never"],
