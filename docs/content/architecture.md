@@ -135,6 +135,19 @@ The redirect is relative, so the browser keeps the public scheme and host.
 nginx reads its configuration only at start.
 The nginx pods carry a checksum of it (`checksum/config`), so a chart upgrade that changes the configuration, or `nginx.customConfig`, rolls them.
 
+The nginx replicas run on different nodes, so that losing one node does not take every site down.
+A topology spread constraint (`nginx.topologySpreadConstraints`) lets the number of replicas per node differ by at most one, and the scheduler refuses any node that would break this.
+The constraint counts only the pods of one revision (`matchLabelKeys: pod-template-hash`), so a rolling update spreads the new pods among themselves.
+Counted together with the old pods, replicas that share a node move to the other node together on every rollout, and a preferred pod anti-affinity alone behaves the same way.
+Nodes the pod cannot run on are left out of the count (`nodeTaintsPolicy: Honor`): cordoned nodes, nodes that are not ready, and nodes with a taint the pod does not tolerate.
+On a single-node cluster, or while only one node is schedulable, the replicas therefore share that node instead of one of them staying `Pending`.
+
+The scheduler applies the constraint only when it places a pod, and Kubernetes does not move running pods.
+After a node drain or outage the replicas share the remaining node and stay there until the next rollout.
+If the cluster always has two or more nodes for nginx, add `minDomains: 2` to the constraint (Kubernetes 1.28 or later).
+A replica that lost its node then stays `Pending` until a second node is schedulable, so the replicas are spread again after every drain or reboot, while the other replica keeps serving.
+Do not set it on a single-node cluster, where the second replica would never start.
+
 ## Request Flow
 
 ```
