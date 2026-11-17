@@ -40,6 +40,10 @@ Complete reference for all Helm chart configuration options.
 | `operator.metricsBindAddress` | `:8080` | Metrics bind address |
 | `operator.healthProbeBindAddress` | `:8081` | Health probe bind address |
 | `operator.extraArgs` | `[]` | Additional CLI arguments |
+| `operator.podAnnotations` | `{}` | Pod annotations |
+| `operator.podLabels` | `{}` | Pod labels |
+| `operator.podSecurityContext` | `{}` | Pod security context |
+| `operator.securityContext` | (non-root, read-only root filesystem, no privilege escalation, all capabilities dropped) | Container security context |
 | `operator.resources.limits.cpu` | `200m` | CPU limit |
 | `operator.resources.limits.memory` | `128Mi` | Memory limit |
 | `operator.resources.requests.cpu` | `100m` | CPU request |
@@ -47,6 +51,8 @@ Complete reference for all Helm chart configuration options.
 | `operator.nodeSelector` | `{}` | Node selector |
 | `operator.tolerations` | `[]` | Tolerations |
 | `operator.affinity` | `{}` | Affinity rules |
+| `operator.livenessProbe` | (HTTP `/healthz` on port 8081, first after 15 s, then every 20 s) | Liveness probe configuration |
+| `operator.readinessProbe` | (HTTP `/readyz` on port 8081, first after 5 s, then every 10 s) | Readiness probe configuration |
 | `operator.serviceAccount.create` | `true` | Create service account |
 | `operator.serviceAccount.name` | `""` | Service account name |
 | `operator.serviceAccount.annotations` | `{}` | Service account annotations |
@@ -68,6 +74,10 @@ Complete reference for all Helm chart configuration options.
 | `syncer.minFreePercent` | `10` | Minimum free space on the sites volume in percent (0 disables) |
 | `syncer.metricsPort` | `9090` | Syncer metrics port |
 | `syncer.extraArgs` | `[]` | Additional CLI arguments |
+| `syncer.podAnnotations` | `{}` | Pod annotations |
+| `syncer.podLabels` | `{}` | Pod labels |
+| `syncer.podSecurityContext` | `{}` | Pod security context |
+| `syncer.securityContext` | (non-root user 1000, no privilege escalation, all capabilities dropped) | Container security context. The root filesystem stays writable, because git needs `/tmp` |
 | `syncer.resources.limits.cpu` | `500m` | CPU limit |
 | `syncer.resources.limits.memory` | `256Mi` | Memory limit. Sufficient for sites with a path; sites with path `/` and repositories above about 1 GB need more |
 | `syncer.resources.requests.cpu` | `100m` | CPU request |
@@ -77,8 +87,10 @@ Complete reference for all Helm chart configuration options.
 | `syncer.affinity` | `{}` | Affinity rules |
 | `syncer.serviceAccount.create` | `true` | Create service account |
 | `syncer.serviceAccount.name` | `""` | Service account name |
+| `syncer.serviceAccount.annotations` | `{}` | Service account annotations |
 | `syncer.service.type` | `ClusterIP` | Service type |
 | `syncer.service.port` | `80` | Service port |
+| `syncer.service.annotations` | `{}` | Service annotations |
 
 ## nginx
 
@@ -89,6 +101,10 @@ Complete reference for all Helm chart configuration options.
 | `nginx.image.repository` | `library/nginx` | Image repository |
 | `nginx.image.tag` | `1.29-alpine` | Image tag |
 | `nginx.image.pullPolicy` | `IfNotPresent` | Image pull policy |
+| `nginx.podAnnotations` | `{}` | Pod annotations |
+| `nginx.podLabels` | `{}` | Pod labels |
+| `nginx.podSecurityContext` | `{}` | Pod security context |
+| `nginx.securityContext` | (non-root user 101, read-only root filesystem, no privilege escalation, all capabilities dropped) | Container security context |
 | `nginx.resources.limits.cpu` | `200m` | CPU limit |
 | `nginx.resources.limits.memory` | `128Mi` | Memory limit |
 | `nginx.resources.requests.cpu` | `50m` | CPU request |
@@ -97,8 +113,11 @@ Complete reference for all Helm chart configuration options.
 | `nginx.tolerations` | `[]` | Tolerations |
 | `nginx.affinity` | (pod anti-affinity) | Affinity rules |
 | `nginx.topologySpreadConstraints` | (spread over nodes, see below) | Topology spread constraints. Set to `[]` to rely on the preferred pod anti-affinity alone |
+| `nginx.livenessProbe` | (HTTP `/health` on port 80, first after 5 s, then every 10 s) | Liveness probe configuration |
+| `nginx.readinessProbe` | (HTTP `/health` on port 80, first after 2 s, then every 5 s) | Readiness probe configuration |
 | `nginx.service.type` | `ClusterIP` | Service type |
 | `nginx.service.port` | `80` | Service port |
+| `nginx.service.annotations` | `{}` | Service annotations |
 | `nginx.customConfig` | `""` | Custom nginx configuration. Replaces the whole default `server` block, including the directory redirect that uses `X-Forwarded-Prefix` |
 | `nginx.pdb.enabled` | `true` | Enable PodDisruptionBudget |
 | `nginx.pdb.minAvailable` | `1` | Minimum available pods |
