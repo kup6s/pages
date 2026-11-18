@@ -2,6 +2,7 @@ package v1beta1
 
 import (
 	"os"
+	"reflect"
 	"regexp"
 	"testing"
 
@@ -87,5 +88,21 @@ func TestCRD_InternalURLAndVisibilityColumn(t *testing.T) {
 	}
 	if !found {
 		t.Error("Visibility printer column missing in the CRD")
+	}
+}
+
+func TestCRD_ContentPath(t *testing.T) {
+	version, _ := loadCRDSchema(t)
+
+	status := version.Schema.OpenAPIV3Schema.Properties["status"]
+	contentPath, ok := status.Properties["contentPath"]
+	if !ok {
+		t.Fatal("status.contentPath missing in the CRD")
+	}
+	if contentPath.Type != "string" {
+		t.Errorf("status.contentPath type = %q, want string", contentPath.Type)
+	}
+	if _, ok := reflect.TypeOf(StaticSiteStatus{}).FieldByName("ContentPath"); !ok {
+		t.Error("StaticSiteStatus.ContentPath missing in types.go")
 	}
 }

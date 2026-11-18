@@ -29,8 +29,8 @@ func (s *Syncer) reportStatus(ctx context.Context, site *staticSiteData, cond me
 	}
 }
 
-// setSynced writes the Synced condition, and on success lastSync and
-// lastCommit. It reads the current object and writes the whole status back
+// setSynced writes the Synced condition, and on success lastSync, lastCommit
+// and contentPath. It reads the current object and writes the whole status back
 // with optimistic concurrency, so conditions owned by the controller stay.
 // A failing site keeps Synced=False while a retry clones.
 func (s *Syncer) setSynced(ctx context.Context, site *staticSiteData, cond metav1.Condition, commit string) error {
@@ -64,12 +64,32 @@ func (s *Syncer) setSynced(ctx context.Context, site *staticSiteData, cond metav
 			if err := unstructured.SetNestedField(obj.Object, commit, "status", "lastCommit"); err != nil {
 				return err
 			}
+			if err := unstructured.SetNestedField(obj.Object, pagesv1.ContentPathFor(site.Namespace, site.Name), "status", "contentPath"); err != nil {
+				return err
+			}
 		}
 		if _, err := sites.UpdateStatus(ctx, obj, metav1.UpdateOptions{}); err != nil {
 			return err
 		}
 		s.recordTransition(obj, wasFailing, cond, commit)
 		return nil
+	})
+}
+
+// setContentPath records that the site is served from its per-namespace
+// path, without touching the Synced condition.
+func (s *Syncer) setContentPath(ctx context.Context, site *staticSiteData) error {
+	sites := s.DynamicClient.Resource(staticSiteGVR).Namespace(site.Namespace)
+	return retry.RetryOnConflict(retry.DefaultRetry, func() error {
+		obj, err := sites.Get(ctx, site.Name, metav1.GetOptions{})
+		if err != nil {
+			return err
+		}
+		if err := unstructured.SetNestedField(obj.Object, pagesv1.ContentPathFor(site.Namespace, site.Name), "status", "contentPath"); err != nil {
+			return err
+		}
+		_, err = sites.UpdateStatus(ctx, obj, metav1.UpdateOptions{})
+		return err
 	})
 }
 

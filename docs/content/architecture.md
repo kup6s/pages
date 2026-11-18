@@ -101,11 +101,12 @@ All generated resources are created in the system namespace (`kup6s-pages`) for 
 
 Synchronizes Git repositories to the shared PVC:
 - Periodically polls all StaticSite CRDs
-- Keeps one clone per StaticSite under `/sites/.repos/<name>`, using the git CLI
+- Keeps one clone per StaticSite under `/sites/.clones/<namespace>/<name>`, using the git CLI
 - Clones are shallow partial clones (`--depth 1 --filter=blob:none`).
   When `spec.path` is set, only that directory is checked out (sparse checkout).
   Ten sites that each serve one directory of a large repository download about the repository's size once, not ten times.
-- `/sites/<name>` is always a symlink to the served directory of the clone
+- `/sites/<namespace>/<name>` is always a symlink to the served directory of the clone.
+  Paths are unique across namespaces, so sites of the same name in different namespaces never share a checkout.
 - Supports private repos via Secrets
 - Serves webhooks for instant syncs
 - Reports results in the `Synced` condition and as events, and exposes Prometheus metrics on a separate port
@@ -128,7 +129,7 @@ server {
 No dynamic configuration needed - routing is handled by Traefik via addPrefix.
 
 A directory requested without a trailing slash (`/2019`, `/docs/guide`) is redirected to the same public URL with a slash.
-nginx's built-in redirect would expose the internal `/<site>` path that Traefik added, so the configuration builds the target itself: the prefix that Traefik's `stripPrefix` reported in `X-Forwarded-Prefix`, followed by the request path without the `/<site>` segment.
+nginx's built-in redirect would expose the internal `/<namespace>/<name>` path that Traefik added, so the configuration builds the target itself: the prefix that Traefik's `stripPrefix` reported in `X-Forwarded-Prefix`, followed by the request path without the `/<namespace>/<name>` segments.
 Only plain path segments are accepted from that header, so a client cannot turn the redirect into one to another host.
 The redirect is relative, so the browser keeps the public scheme and host.
 
@@ -166,9 +167,9 @@ HTTPS Request: www.customer.com/about.html
 │  Traefik                                            │
 │                                                     │
 │  Route Match: Host(`www.customer.com`)              │
-│  Middleware:  addPrefix(/customer-website)          │
+│  Middleware:  addPrefix(/customer/website)          │
 │                                                     │
-│  Internal Request: /customer-website/about.html     │
+│  Internal Request: /customer/website/about.html     │
 └────────────────────────┬────────────────────────────┘
                          │
                          │ 2. HTTP to nginx Service
@@ -177,8 +178,8 @@ HTTPS Request: www.customer.com/about.html
 │  nginx                                              │
 │                                                     │
 │  root /sites;                                       │
-│  Request: /customer-website/about.html              │
-│  Served:  /sites/customer-website/about.html        │
+│  Request: /customer/website/about.html              │
+│  Served:  /sites/customer/website/about.html        │
 └────────────────────────┬────────────────────────────┘
                          │
                          │ 3. File from PVC
@@ -186,7 +187,7 @@ HTTPS Request: www.customer.com/about.html
 ┌─────────────────────────────────────────────────────┐
 │  PVC: /sites                                        │
 │                                                     │
-│  /sites/customer-website/                           │
+│  /sites/customer/website/                           │
 │  ├── index.html                                     │
 │  ├── about.html  ◄── This file                      │
 │  └── assets/                                        │
@@ -201,14 +202,41 @@ For every StaticSite, at each interval:
 
 1. Validate `repo` and `path`, and read the credentials from `secretRef`.
 2. Skip the site with `Synced=False/DiskFull` if the sites volume has less than `--min-free-percent` free.
-3. If `/sites/.repos/<name>` is a complete clone of the configured repo, branch and path, run `git fetch --depth 1` and `git reset --hard`.
+3. If `/sites/.clones/<namespace>/<name>` is a complete clone of the configured repo, branch and path, run `git fetch --depth 1` and `git reset --hard`.
    A failed fetch keeps the current content online.
    A failed reset triggers a fresh clone.
-4. Otherwise, clone into `/sites/.repos/.tmp-<name>-<random>`, swap it into place, and point `/sites/<name>` at it with an atomic rename.
+4. Otherwise, clone into `/sites/.clones/<namespace>/.tmp-<name>-<random>`, swap it into place, and point `/sites/<namespace>/<name>` at it with an atomic rename.
    An interrupted clone never replaces a working site.
 5. Replace the clone with a fresh one when `.git` grows beyond twice the checkout plus 50 MiB.
    Git does not prune old objects of partial clones.
-6. Write `Synced`, `lastSync` and `lastCommit`.
+6. Write `Synced`, `lastSync`, `lastCommit` and `contentPath`.
+
+### Site paths
+
+Traefik's `addPrefix` middleware puts `/<namespace>/<name>` in front of every request, and `status.internalURL` ends in the same path.
+The operator takes this path from `status.contentPath`, which the syncer writes once the site is linked there.
+While `contentPath` is empty, and for any value other than the site's own path, the operator keeps the path `/<name>` of the layout before 1.0.0-rc.7.
+
+### Moving from the layout before 1.0.0-rc.7
+
+Earlier versions kept every site under `/sites/<name>` and `/sites/.repos/<name>`, so two sites of the same name in different namespaces shared one directory.
+At its start, before the first sync, the syncer moves each legacy clone to `.clones/<namespace>/<name>`:
+
+1. It moves the clone only to the site whose repository, branch and path it was made for.
+   Another site of the same name gets a fresh clone from the next sync.
+2. The legacy link `/sites/<name>` is pointed into the moved clone, so the site keeps serving under its old path.
+3. The syncer links `/sites/<namespace>/<name>` and writes `status.contentPath`.
+4. The operator switches the site's `addPrefix` and `internalURL` within seconds.
+5. Cleanup removes `/sites/<name>` and `/sites/.repos/<name>` once every site of that name has moved: its `contentPath` is set, and its `internalURL` ends in `/<namespace>/<name>/`.
+   The operator writes the `internalURL` after it has updated the `addPrefix` middleware, so a link goes only after Traefik has stopped using it, even when an operator of an earlier version is still running.
+   `.repos` goes once it is empty.
+
+No site is cloned again or taken offline.
+While a site still serves under `/<name>`, nginx already strips two segments for the redirect of a directory requested without a trailing slash, so such a redirect lands on the site root.
+This lasts from the nginx rollout until the operator has switched the site, seconds to minutes.
+
+A site named like a namespace keeps its legacy link `/sites/<namespace>` until it has moved.
+Sites in that namespace report `Synced=False` with reason `LegacyPathInUse` until cleanup has removed the link, usually within two sync intervals.
 
 ### Webhook Sync (Instant)
 

@@ -13,15 +13,15 @@ map $http_x_forwarded_prefix $public_prefix {
     "~^(?<prefix>(/[A-Za-z0-9._~%-]+)+)/?$" $prefix;
 }
 
-# The still-encoded request path without the /<site> segment that
-# Traefik's addPrefix middleware put in front of it.
+# The still-encoded request path without the /<namespace>/<name> segments
+# that Traefik's addPrefix middleware put in front of it.
 map $request_uri $site_path {
     default "";
-    "~^/[^/?]+(?<path>/[^?]*)" $path;
+    "~^/[^/?]+/[^/?]+(?<path>/[^?]*)" $path;
 }
 
-# All sites share root /sites, so a request must stay inside the /<site>
-# segment that addPrefix put in front of it. nginx decodes and resolves
+# All sites share root /sites, so a request must stay inside the
+# /<namespace>/<name> segments that addPrefix put in front of it. nginx decodes and resolves
 # dot-dot segments before mapping the path to a file, so any of them,
 # encoded or not, and any encoded slash could reach another site or the
 # repository checkouts. Real file paths need neither.
@@ -51,15 +51,16 @@ server {
     # Serve all sites from /sites
     # Traefik does the addPrefix, so:
     # Request: www.customer.com/about.html
-    # Traefik: addPrefix /customer-website
-    # nginx sees: /customer-website/about.html
-    # Served: /sites/customer-website/about.html
+    # Traefik: addPrefix /customer/website
+    # nginx sees: /customer/website/about.html
+    # Served: /sites/customer/website/about.html
 
     root /sites;
 
     # Never serve the repository checkouts or the syncer's temporary
-    # entries. Site names cannot start with a dot.
-    location ~ ^/\. {
+    # entries, at the top or in a namespace directory. Namespace and site
+    # names cannot start with a dot.
+    location ~ ^(/[^/]+)?/\. {
         return 404;
     }
 
@@ -71,7 +72,7 @@ server {
     location / {
         # A directory requested without trailing slash is redirected to
         # its public URL with a slash, so relative links resolve. nginx's
-        # built-in redirect would expose the internal /<site> path.
+        # built-in redirect would expose the internal /<namespace>/<name> path.
         set $dir_redirect "";
         if (-d $request_filename) {
             set $dir_redirect "yes";

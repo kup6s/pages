@@ -31,7 +31,7 @@ func testSite(r *testRemote, path string) *staticSiteData {
 // servedFile reads a file through the site symlink, as nginx would.
 func servedFile(t *testing.T, s *Syncer, rel string) string {
 	t.Helper()
-	return readFile(t, filepath.Join(s.SitesRoot, "site", rel))
+	return readFile(t, filepath.Join(s.siteLink("default", "site"), rel))
 }
 
 func listDir(t *testing.T, dir string) []string {
@@ -49,7 +49,11 @@ func listDir(t *testing.T, dir string) []string {
 
 func assertNoTempEntries(t *testing.T, s *Syncer) {
 	t.Helper()
-	for _, dir := range []string{s.SitesRoot, filepath.Join(s.SitesRoot, reposDirName)} {
+	dirs := []string{
+		s.SitesRoot, filepath.Join(s.SitesRoot, reposDirName),
+		filepath.Join(s.SitesRoot, "default"), filepath.Join(s.SitesRoot, clonesDirName, "default"),
+	}
+	for _, dir := range dirs {
 		for _, name := range listDir(t, dir) {
 			if strings.HasPrefix(name, ".tmp-") || strings.HasPrefix(name, ".old-") {
 				t.Errorf("temporary entry %s left in %s", name, dir)
@@ -68,10 +72,10 @@ func TestCloneSite_ServesSubpathThroughSymlink(t *testing.T) {
 	if got := servedFile(t, s, "index.html"); got != "2018 v1" {
 		t.Errorf("served index.html = %q, want 2018 v1", got)
 	}
-	if link, _ := os.Readlink(filepath.Join(s.SitesRoot, "site")); link != filepath.Join(s.repoDir("site"), "2018") {
+	if link, _ := os.Readlink(s.siteLink("default", "site")); link != filepath.Join(s.cloneDir("default", "site"), "2018") {
 		t.Errorf("site -> %q", link)
 	}
-	if _, err := os.Stat(filepath.Join(s.repoDir("site"), ".git", markerFile)); err != nil {
+	if _, err := os.Stat(filepath.Join(s.cloneDir("default", "site"), ".git", markerFile)); err != nil {
 		t.Errorf("marker missing: %v", err)
 	}
 	assertNoTempEntries(t, s)
@@ -92,7 +96,7 @@ func TestCloneSite_RootPathLinksRepository(t *testing.T) {
 func TestCloneSite_ReplacesLegacyDirectory(t *testing.T) {
 	r := newTestRemote(t, archiveFiles, remoteOptions{})
 	s := newTestSyncer(t, r)
-	legacy := filepath.Join(s.SitesRoot, "site")
+	legacy := s.siteLink("default", "site")
 	if err := os.MkdirAll(filepath.Join(legacy, "nested"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +115,7 @@ func TestCloneSite_ReplacesLegacyDirectory(t *testing.T) {
 	if got := servedFile(t, s, "index.html"); got != "root" {
 		t.Errorf("served index.html = %q, want root", got)
 	}
-	if _, err := os.Stat(filepath.Join(s.SitesRoot, "site", "nested", "old.html")); err == nil {
+	if _, err := os.Stat(filepath.Join(legacy, "nested", "old.html")); err == nil {
 		t.Error("legacy content still present")
 	}
 	assertNoTempEntries(t, s)
@@ -145,7 +149,7 @@ func TestCloneSite_MissingSubpath(t *testing.T) {
 	if syncReason(err) != pagesv1.SyncReasonSubpathMissing {
 		t.Fatalf("err = %v (reason %q), want SubpathMissing", err, syncReason(err))
 	}
-	if _, err := os.Lstat(filepath.Join(s.SitesRoot, "site")); !os.IsNotExist(err) {
+	if _, err := os.Lstat(s.siteLink("default", "site")); !os.IsNotExist(err) {
 		t.Error("site link created for a missing subpath")
 	}
 	assertNoTempEntries(t, s)
@@ -154,13 +158,13 @@ func TestCloneSite_MissingSubpath(t *testing.T) {
 // markClone drops a file into .git that survives updates but not re-clones.
 func markClone(t *testing.T, s *Syncer) {
 	t.Helper()
-	if err := os.WriteFile(filepath.Join(s.repoDir("site"), ".git", "sentinel"), nil, 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(s.cloneDir("default", "site"), ".git", "sentinel"), nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
 
 func cloneReplaced(s *Syncer) bool {
-	_, err := os.Stat(filepath.Join(s.repoDir("site"), ".git", "sentinel"))
+	_, err := os.Stat(filepath.Join(s.cloneDir("default", "site"), ".git", "sentinel"))
 	return os.IsNotExist(err)
 }
 
@@ -249,7 +253,7 @@ func TestSyncSite_RecloneBrokenClone(t *testing.T) {
 	markClone(t, s)
 
 	// The state an interrupted clone used to leave: .git exists, HEAD points nowhere.
-	head := filepath.Join(s.repoDir("site"), ".git", "HEAD")
+	head := filepath.Join(s.cloneDir("default", "site"), ".git", "HEAD")
 	if err := os.WriteFile(head, []byte("ref: refs/heads/missing\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -262,11 +266,11 @@ func TestSyncSite_RecloneBrokenClone(t *testing.T) {
 func TestSyncSite_RecloneLegacyClone(t *testing.T) {
 	r := newTestRemote(t, archiveFiles, remoteOptions{})
 	s := newTestSyncer(t, r)
-	if err := os.MkdirAll(filepath.Join(s.SitesRoot, reposDirName), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(s.cloneDir("default", "site")), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	// A full clone without marker, as go-git left it.
-	runGit(t, s.SitesRoot, "clone", "--quiet", "--branch", "main", r.URL, s.repoDir("site"))
+	runGit(t, s.SitesRoot, "clone", "--quiet", "--branch", "main", r.URL, s.cloneDir("default", "site"))
 	markClone(t, s)
 
 	mustSync(t, s, testSite(r, "/2018"))
@@ -415,7 +419,7 @@ func TestSyncSite_RecloneAfterStaleFetchLock(t *testing.T) {
 			site := testSite(r, "/2018")
 			mustSync(t, s, site)
 			markClone(t, s)
-			lockPath := filepath.Join(s.repoDir("site"), ".git", lock)
+			lockPath := filepath.Join(s.cloneDir("default", "site"), ".git", lock)
 			// Newer git writes the refs of a fresh single-branch clone to packed-refs,
 			// so refs/remotes/origin may not exist yet.
 			if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
@@ -495,7 +499,7 @@ func TestSyncSite_TagAsBranchIsInvalidSpec(t *testing.T) {
 		t.Fatalf("err = %v (reason %q), want InvalidSpec", err, syncReason(err))
 	}
 	assertNoTempEntries(t, s)
-	if _, err := os.Lstat(s.repoDir("site")); !os.IsNotExist(err) {
+	if _, err := os.Lstat(s.cloneDir("default", "site")); !os.IsNotExist(err) {
 		t.Error("a clone of a tag was kept")
 	}
 }

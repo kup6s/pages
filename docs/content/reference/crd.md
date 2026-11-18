@@ -35,7 +35,8 @@ The API server rejects a `Private` site that sets `domain` or `pathPrefix`.
 | `lastSync` | timestamp | Timestamp of last successful sync |
 | `lastCommit` | string | Short SHA of the last synced commit |
 | `url` | string | Full URL of the deployed site; empty for private sites |
-| `internalURL` | string | In-cluster address of the site, served by nginx, e.g. `http://kup6s-pages-nginx.kup6s-pages.svc/my-website/` |
+| `internalURL` | string | In-cluster address of the site, served by nginx, e.g. `http://kup6s-pages-nginx.kup6s-pages.svc/pages/my-website/` |
+| `contentPath` | string | Path below the nginx root that serves the site, `/<namespace>/<name>`; written by the syncer once the site is linked there, empty while it still serves from its legacy path `/<name>` |
 | `syncToken` | string | Auto-generated token for API authentication |
 | `conditions` | []Condition | Standard Kubernetes conditions |
 | `resources.ingressRoute` | string | Name of created IngressRoute |

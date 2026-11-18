@@ -764,7 +764,8 @@ func TestHandleDelete_Error(t *testing.T) {
 	// Create a read-only directory that will cause deletion to fail
 	tmpDir := t.TempDir()
 	sitesDir := filepath.Join(tmpDir, "sites")
-	siteDir := filepath.Join(sitesDir, "mysite")
+	namespaceDir := filepath.Join(sitesDir, "default")
+	siteDir := filepath.Join(namespaceDir, "mysite")
 
 	if err := os.MkdirAll(siteDir, 0o755); err != nil {
 		t.Fatalf("failed to create site dir: %v", err)
@@ -776,11 +777,11 @@ func TestHandleDelete_Error(t *testing.T) {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
-	// Make the sites directory read-only to prevent deletion
-	if err := os.Chmod(sitesDir, 0o555); err != nil {
-		t.Fatalf("failed to chmod sites dir: %v", err)
+	// Make the namespace directory read-only to prevent deletion
+	if err := os.Chmod(namespaceDir, 0o555); err != nil {
+		t.Fatalf("failed to chmod namespace dir: %v", err)
 	}
-	defer func() { _ = os.Chmod(sitesDir, 0o755) }() // Cleanup
+	defer func() { _ = os.Chmod(namespaceDir, 0o755) }() // Cleanup
 
 	w := &WebhookServer{
 		Syncer: &Syncer{

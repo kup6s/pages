@@ -241,7 +241,18 @@ func (r *StaticSiteReconciler) reconcilePrivate(ctx context.Context, site *pages
 
 // internalURL is the in-cluster address of the site behind nginx.
 func (r *StaticSiteReconciler) internalURL(site *pagesv1.StaticSite) string {
-	return fmt.Sprintf("http://%s.%s.svc/%s/", r.NginxServiceName, r.NginxNamespace, site.Name)
+	return fmt.Sprintf("http://%s.%s.svc%s/", r.NginxServiceName, r.NginxNamespace, sitePath(site))
+}
+
+// sitePath is the path below the nginx root that serves the site. The syncer
+// reports the per-namespace path once the site is linked there; until then the
+// site keeps its legacy path. Only the site's own path is accepted, so a status
+// can never route to another site's directory.
+func sitePath(site *pagesv1.StaticSite) string {
+	if want := pagesv1.ContentPathFor(site.Namespace, site.Name); site.Status.ContentPath == want {
+		return want
+	}
+	return "/" + site.Name
 }
 
 // ensureFinalizerAndToken adds the finalizer and generates a sync token if needed.
@@ -364,7 +375,7 @@ func (r *StaticSiteReconciler) reconcileMiddleware(ctx context.Context, site *pa
 	return nil
 }
 
-// createAddPrefixMiddleware creates the middleware that adds /<sitename> prefix for nginx routing
+// createAddPrefixMiddleware creates the middleware that adds the site's path for nginx routing
 // Created in the system namespace with namespace-prefixed name for isolation
 func (r *StaticSiteReconciler) createAddPrefixMiddleware(ctx context.Context, site *pagesv1.StaticSite) error {
 	middleware := &unstructured.Unstructured{
@@ -382,7 +393,7 @@ func (r *StaticSiteReconciler) createAddPrefixMiddleware(ctx context.Context, si
 			},
 			"spec": map[string]interface{}{
 				"addPrefix": map[string]interface{}{
-					"prefix": "/" + site.Name,
+					"prefix": sitePath(site),
 				},
 			},
 		},

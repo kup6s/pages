@@ -116,6 +116,12 @@ type StaticSiteStatus struct {
 	// +optional
 	InternalURL string `json:"internalURL,omitempty"`
 
+	// ContentPath is the path below the nginx root that serves the site,
+	// /<namespace>/<name>. The syncer sets it once the site is linked there;
+	// while it is empty, the site is served from its legacy path /<name>.
+	// +optional
+	ContentPath string `json:"contentPath,omitempty"`
+
 	// Conditions for detailed status information
 	// +optional
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
@@ -160,6 +166,12 @@ const (
 	VisibilityPrivate Visibility = "Private"
 )
 
+// ContentPathFor is the path below the nginx root that serves a site in the
+// per-namespace layout. Site directories are unique across namespaces (#158).
+func ContentPathFor(namespace, name string) string {
+	return "/" + namespace + "/" + name
+}
+
 // IsPrivate reports whether the site has no public route.
 // An empty Visibility (objects stored before the field existed) counts as public.
 func (s *StaticSite) IsPrivate() bool {
@@ -199,6 +211,9 @@ const (
 	SyncReasonTimeout        = "Timeout"
 	SyncReasonInvalidSpec    = "InvalidSpec"
 	SyncReasonSyncFailed     = "SyncFailed"
+	// SyncReasonLegacyPathInUse: the namespace directory of the site is still
+	// taken by the legacy path of a site named like the namespace.
+	SyncReasonLegacyPathInUse = "LegacyPathInUse"
 )
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

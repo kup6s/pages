@@ -59,3 +59,9 @@ func TestPathValidation(t *testing.T) {
 		})
 	}
 }
+
+func TestContentPathFor(t *testing.T) {
+	if got := ContentPathFor("team-a", "docs"); got != "/team-a/docs" {
+		t.Errorf("ContentPathFor = %q, want /team-a/docs", got)
+	}
+}

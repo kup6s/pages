@@ -27,19 +27,25 @@ func (s *Syncer) git() *gitCLI {
 	return &gitCLI{Timeout: s.GitTimeout}
 }
 
-func (s *Syncer) repoDir(name string) string {
-	return filepath.Join(s.SitesRoot, reposDirName, name)
+// cloneDir is the clone of a site: .clones/<namespace>/<name>.
+func (s *Syncer) cloneDir(namespace, name string) string {
+	return filepath.Join(s.SitesRoot, clonesDirName, namespace, name)
+}
+
+// siteLink is the served path of a site: /<namespace>/<name>.
+func (s *Syncer) siteLink(namespace, name string) string {
+	return filepath.Join(s.SitesRoot, namespace, name)
 }
 
 // cloneSite clones into a temporary directory and swaps the result into
 // place, so an interrupted clone never looks like a valid one.
 func (s *Syncer) cloneSite(ctx context.Context, site *staticSiteData, subpath string, auth *gitAuth) error {
 	defer s.Metrics.observeGit("clone", time.Now())
-	reposDir := filepath.Join(s.SitesRoot, reposDirName)
-	if err := os.MkdirAll(reposDir, 0o755); err != nil {
+	clones := filepath.Dir(s.cloneDir(site.Namespace, site.Name))
+	if err := os.MkdirAll(clones, 0o755); err != nil {
 		return newSyncError(pagesv1.SyncReasonCloneFailed, err)
 	}
-	tmp := filepath.Join(reposDir, tempName(tmpRepoPrefix, site.Name))
+	tmp := filepath.Join(clones, tempName(tmpRepoPrefix, site.Name))
 	log.FromContext(ctx).Info("Cloning repository", "site", site.Name, "repo", site.Repo, "path", subpath)
 
 	cloneCtx, cancel := context.WithCancelCause(ctx)
@@ -65,15 +71,15 @@ func (s *Syncer) cloneSite(ctx context.Context, site *staticSiteData, subpath st
 		_ = os.RemoveAll(tmp)
 		return newSyncError(pagesv1.SyncReasonCloneFailed, err)
 	}
-	return s.swapClone(ctx, site.Name, subpath, tmp)
+	return s.swapClone(ctx, site, subpath, tmp)
 }
 
-// swapClone moves a finished clone to .repos/<name> and points the site at it.
-func (s *Syncer) swapClone(ctx context.Context, name, subpath, tmp string) error {
-	final := s.repoDir(name)
+// swapClone moves a finished clone to its clone directory and points the site at it.
+func (s *Syncer) swapClone(ctx context.Context, site *staticSiteData, subpath, tmp string) error {
+	final := s.cloneDir(site.Namespace, site.Name)
 	old := ""
 	if _, err := os.Lstat(final); err == nil {
-		old = filepath.Join(filepath.Dir(final), tempName(oldRepoPrefix, name))
+		old = filepath.Join(filepath.Dir(final), tempName(oldRepoPrefix, site.Name))
 		if err := os.Rename(final, old); err != nil {
 			_ = os.RemoveAll(tmp)
 			return newSyncError(pagesv1.SyncReasonCloneFailed, err)
@@ -86,8 +92,8 @@ func (s *Syncer) swapClone(ctx context.Context, name, subpath, tmp string) error
 		}
 		return newSyncError(pagesv1.SyncReasonCloneFailed, err)
 	}
-	if err := s.linkSite(name, subpath); err != nil {
-		return newSyncError(pagesv1.SyncReasonSyncFailed, err)
+	if err := s.linkSite(site, subpath); err != nil {
+		return err
 	}
 	if old != "" {
 		if err := os.RemoveAll(old); err != nil {
@@ -97,14 +103,41 @@ func (s *Syncer) swapClone(ctx context.Context, name, subpath, tmp string) error
 	return nil
 }
 
-// linkSite points /sites/<name> at the served directory of the clone.
-func (s *Syncer) linkSite(name, subpath string) error {
-	target := filepath.Join(s.repoDir(name), subpath)
-	link := filepath.Join(s.SitesRoot, name)
+// linkSite points /<namespace>/<name> at the served directory of the clone.
+func (s *Syncer) linkSite(site *staticSiteData, subpath string) error {
+	if err := s.ensureNamespaceDir(site.Namespace); err != nil {
+		return err
+	}
+	target := filepath.Join(s.cloneDir(site.Namespace, site.Name), subpath)
+	link := s.siteLink(site.Namespace, site.Name)
 	if current, err := os.Readlink(link); err == nil && current == target {
 		return nil
 	}
-	return replaceSymlink(target, link)
+	if err := replaceSymlink(target, link); err != nil {
+		return newSyncError(pagesv1.SyncReasonSyncFailed, err)
+	}
+	return nil
+}
+
+// ensureNamespaceDir creates /<namespace>. While a site named like the
+// namespace is still served from its legacy link there, the site waits:
+// creating the directory would write into that site's content.
+func (s *Syncer) ensureNamespaceDir(namespace string) error {
+	dir := filepath.Join(s.SitesRoot, namespace)
+	info, err := os.Lstat(dir)
+	switch {
+	case err == nil && info.IsDir():
+		return nil
+	case err == nil:
+		return newSyncError(pagesv1.SyncReasonLegacyPathInUse,
+			fmt.Errorf("%s is still the legacy path of a site named %q; it is removed once that site has moved", dir, namespace))
+	case !os.IsNotExist(err):
+		return newSyncError(pagesv1.SyncReasonSyncFailed, err)
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return newSyncError(pagesv1.SyncReasonSyncFailed, err)
+	}
+	return nil
 }
 
 // checkSubpath fails when the served directory does not exist in the clone.
@@ -126,7 +159,7 @@ var recloneSlackBytes int64 = 50 << 20
 
 // syncSite brings one site to the head of its branch and reports the result.
 func (s *Syncer) syncSite(ctx context.Context, site *staticSiteData) error {
-	lock := s.locks.get(site.Name)
+	lock := s.locks.get(siteKey(site.Namespace, site.Name))
 	lock.Lock()
 	defer lock.Unlock()
 
@@ -182,7 +215,7 @@ func (s *Syncer) syncRepo(ctx context.Context, site *staticSiteData, subpath str
 		return "", err
 	}
 	logger := log.FromContext(ctx)
-	dir := s.repoDir(site.Name)
+	dir := s.cloneDir(site.Namespace, site.Name)
 	if err := cancelled(ctx); err != nil {
 		return "", err
 	}
@@ -221,8 +254,8 @@ func (s *Syncer) syncRepo(ctx context.Context, site *staticSiteData, subpath str
 	if err := checkSubpath(dir, subpath); err != nil {
 		return "", err
 	}
-	if err := s.linkSite(site.Name, subpath); err != nil {
-		return "", newSyncError(pagesv1.SyncReasonSyncFailed, err)
+	if err := s.linkSite(site, subpath); err != nil {
+		return "", err
 	}
 	return after, nil
 }
@@ -243,7 +276,7 @@ func (s *Syncer) recloneSite(ctx context.Context, site *staticSiteData, subpath 
 	if err := s.cloneSite(ctx, site, subpath, auth); err != nil {
 		return "", err
 	}
-	commit, err := s.git().head(ctx, s.repoDir(site.Name))
+	commit, err := s.git().head(ctx, s.cloneDir(site.Namespace, site.Name))
 	if err != nil {
 		return "", newSyncError(pagesv1.SyncReasonCloneFailed, err)
 	}

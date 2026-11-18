@@ -17,6 +17,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/events"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+
+	pagesv1 "github.com/kup6s/pages/pkg/apis/v1beta1"
 )
 
 // removePathOrSymlink removes a path, handling both symlinks and regular files/directories.
@@ -189,6 +191,9 @@ type staticSiteData struct {
 	Branch    string
 	Path      string
 	SecretRef *secretRef
+	// ContentPath is status.contentPath: set once the site is served from
+	// its per-namespace path.
+	ContentPath string
 }
 
 type secretRef struct {
@@ -205,6 +210,7 @@ func (s *staticSiteData) fromUnstructured(u *unstructured.Unstructured) error {
 		return fmt.Errorf("invalid spec")
 	}
 
+	s.ContentPath, _, _ = unstructured.NestedString(u.Object, "status", "contentPath")
 	s.Repo, _ = spec["repo"].(string)
 	s.Branch, _ = spec["branch"].(string)
 	s.Path, _ = spec["path"].(string)
@@ -238,6 +244,7 @@ func (s *Syncer) RunLoop(ctx context.Context) {
 	defer ticker.Stop()
 
 	s.removeLeftovers(ctx)
+	s.migrateLegacyLayout(ctx)
 
 	// Initial sync
 	if err := s.SyncAll(ctx); err != nil {
@@ -261,7 +268,9 @@ func (s *Syncer) RunLoop(ctx context.Context) {
 	}
 }
 
-// Cleanup removes directories of deleted sites
+// Cleanup removes the paths of deleted sites. A legacy path /<name> (and
+// .repos/<name>) stays while any site of that name may still be routed to it,
+// see routedToContentPath.
 func (s *Syncer) Cleanup(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 
@@ -273,77 +282,136 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 
 	s.removeLeftovers(ctx)
 
-	// Set with all active site names
-	activeSites := make(map[string]bool)
+	active := map[string]map[string]bool{} // namespace -> site names
+	legacyInUse := map[string]bool{}       // legacy names still serving
 	for _, item := range list.Items {
-		activeSites[item.GetName()] = true
+		namespace, name := item.GetNamespace(), item.GetName()
+		if active[namespace] == nil {
+			active[namespace] = map[string]bool{}
+		}
+		active[namespace][name] = true
+		if !routedToContentPath(&item) {
+			legacyInUse[name] = true
+		}
 	}
 
-	// Iterate through directories in /sites
 	entries, err := os.ReadDir(s.SitesRoot)
 	if err != nil {
 		return fmt.Errorf("failed to read sites directory: %w", err)
 	}
-
 	for _, entry := range entries {
 		name := entry.Name()
-
-		// Dot entries are .repos and temporary entries, handled by removeLeftovers
+		// Dot entries are .clones, .repos and temporary entries
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
-
-		// Check if site still exists
-		if !activeSites[name] {
-			sitePath := filepath.Join(s.SitesRoot, name)
-			logger.Info("Removing orphaned site directory", "name", name)
-
-			if err := removePathOrSymlink(sitePath); err != nil {
-				logger.Error(err, "Failed to remove orphaned site", "path", sitePath)
-			}
+		path := filepath.Join(s.SitesRoot, name)
+		if names, ok := active[name]; ok && entry.IsDir() {
+			s.removeOrphans(ctx, path, names)
+			continue
+		}
+		if legacyInUse[name] {
+			continue
+		}
+		logger.Info("Removing orphaned site path", "path", path)
+		if err := removePathOrSymlink(path); err != nil {
+			logger.Error(err, "Failed to remove orphaned site path", "path", path)
 		}
 	}
 
-	// Clean up .repos directories
-	reposDir := filepath.Join(s.SitesRoot, reposDirName)
-	if entries, err := os.ReadDir(reposDir); err == nil {
-		for _, entry := range entries {
-			name := entry.Name()
-			if strings.HasPrefix(name, ".") {
-				continue
-			}
-			if !activeSites[name] {
-				repoPath := filepath.Join(reposDir, name)
-				logger.Info("Removing orphaned repo directory", "name", name)
-				if err := os.RemoveAll(repoPath); err != nil {
-					logger.Error(err, "Failed to remove orphaned repo", "path", repoPath)
-				}
-			}
+	clones := filepath.Join(s.SitesRoot, clonesDirName)
+	for _, namespace := range subdirs(clones) {
+		path := filepath.Join(clones, namespace)
+		if names, ok := active[namespace]; ok {
+			s.removeOrphans(ctx, path, names)
+			continue
+		}
+		logger.Info("Removing clones of a namespace without sites", "path", path)
+		if err := os.RemoveAll(path); err != nil {
+			logger.Error(err, "Failed to remove clones", "path", path)
 		}
 	}
 
+	s.removeLegacyClones(ctx, legacyInUse)
 	return nil
 }
 
-// DeleteSite deletes a specific site (for webhook calls)
-func (s *Syncer) DeleteSite(ctx context.Context, name string) error {
-	logger := log.FromContext(ctx)
-	logger.Info("Deleting site", "name", name)
+// routedToContentPath reports whether a site no longer needs its legacy path:
+// the syncer has linked it at /<namespace>/<name> (status.contentPath), and the
+// controller has switched its route there. The controller writes
+// status.internalURL from the same path after it has updated the addPrefix
+// Middleware, so a contentPath alone may still be routed to the legacy path.
+func routedToContentPath(site *unstructured.Unstructured) bool {
+	want := pagesv1.ContentPathFor(site.GetNamespace(), site.GetName())
+	contentPath, _, _ := unstructured.NestedString(site.Object, "status", "contentPath")
+	internalURL, _, _ := unstructured.NestedString(site.Object, "status", "internalURL")
+	return contentPath == want && strings.HasSuffix(internalURL, want+"/")
+}
 
-	lock := s.locks.get(name)
+// removeOrphans removes the entries in a namespace directory that belong to
+// no site of that namespace.
+func (s *Syncer) removeOrphans(ctx context.Context, dir string, active map[string]bool) {
+	logger := log.FromContext(ctx)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, ".") || active[name] {
+			continue
+		}
+		path := filepath.Join(dir, name)
+		logger.Info("Removing orphaned site path", "path", path)
+		if err := removePathOrSymlink(path); err != nil {
+			logger.Error(err, "Failed to remove orphaned site path", "path", path)
+		}
+	}
+}
+
+// removeLegacyClones removes legacy clones .repos/<name> no site serves from
+// any more, and .repos itself once it is empty.
+func (s *Syncer) removeLegacyClones(ctx context.Context, legacyInUse map[string]bool) {
+	logger := log.FromContext(ctx)
+	repos := filepath.Join(s.SitesRoot, reposDirName)
+	entries, err := os.ReadDir(repos)
+	if err != nil {
+		return
+	}
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, ".") || legacyInUse[name] {
+			continue
+		}
+		path := filepath.Join(repos, name)
+		logger.Info("Removing legacy clone", "path", path)
+		if err := os.RemoveAll(path); err != nil {
+			logger.Error(err, "Failed to remove legacy clone", "path", path)
+		}
+	}
+	// Fails while temporary entries or clones in use are left
+	_ = os.Remove(repos)
+}
+
+// DeleteSite deletes a specific site (for webhook calls). Legacy entries of a
+// site that never moved are left to Cleanup, which knows the other sites of
+// the same name.
+func (s *Syncer) DeleteSite(ctx context.Context, namespace, name string) error {
+	logger := log.FromContext(ctx)
+	logger.Info("Deleting site", "namespace", namespace, "name", name)
+
+	lock := s.locks.get(siteKey(namespace, name))
 	lock.Lock()
 	defer lock.Unlock()
 
-	// Remove symlink/directory in /sites
-	sitePath := filepath.Join(s.SitesRoot, name)
+	sitePath := s.siteLink(namespace, name)
 	if err := removePathOrSymlink(sitePath); err != nil {
 		return fmt.Errorf("failed to remove site path %s: %w", sitePath, err)
 	}
 
-	// Remove repo directory in .repos
-	repoPath := filepath.Join(s.SitesRoot, reposDirName, name)
-	if err := removePathOrSymlink(repoPath); err != nil {
-		return fmt.Errorf("failed to remove repo path %s: %w", repoPath, err)
+	clonePath := s.cloneDir(namespace, name)
+	if err := removePathOrSymlink(clonePath); err != nil {
+		return fmt.Errorf("failed to remove clone %s: %w", clonePath, err)
 	}
 
 	return nil

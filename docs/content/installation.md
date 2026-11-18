@@ -69,6 +69,22 @@ With an older CRD the API server does not know new fields.
 `kubectl apply` rejects them, but a client that does not ask for strict field validation gets them dropped with at most a warning.
 A site set to `visibility: Private` that way stays public.
 
+## Upgrading to per-namespace site paths (#158)
+
+From 1.0.0-rc.7 on, each site is served from `/<namespace>/<name>` instead of `/<name>`, so sites of the same name in different namespaces no longer share a directory.
+
+1. Apply the CRD of the new version first, see [Upgrading the CRD](#upgrading-the-crd).
+   It adds `status.contentPath`.
+   Without it the API server drops the field, every site stays on its legacy path, and nothing breaks, but nothing moves either.
+2. Upgrade the chart.
+   The syncer moves the existing clones at its start, without cloning again, and every site keeps serving while it moves.
+   See [Moving from the layout before 1.0.0-rc.7]({{< relref "/architecture#moving-from-the-layout-before-100-rc7" >}}).
+3. Update proxies in front of private sites that use a fixed path instead of `status.internalURL`.
+   The internal address changes from `http://<nginx>/<name>/` to `http://<nginx>/<namespace>/<name>/`.
+
+To roll back, scale the syncer to 0 and roll back the chart.
+The previous syncer cannot use `.clones` and clones every site again.
+
 ## Upgrading to the git CLI syncer (#153)
 
 The syncer now runs the `git` command line with sparse, blobless clones instead of go-git.

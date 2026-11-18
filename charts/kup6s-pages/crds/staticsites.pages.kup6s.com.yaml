@@ -103,6 +103,9 @@ spec:
                 internalURL:
                   type: string
                   description: In-cluster address of the site, served by nginx
+                contentPath:
+                  type: string
+                  description: Path below the nginx root that serves the site, /<namespace>/<name>; empty while the site is served from its legacy path /<name>
                 conditions:
                   type: array
                   items:

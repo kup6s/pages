@@ -378,12 +378,7 @@ func TestRemovePathOrSymlink(t *testing.T) {
 }
 
 func TestDeleteSite(t *testing.T) {
-	tmpDir, err := os.MkdirTemp("", "syncer-delete-test-*")
-	if err != nil {
-		t.Fatalf("failed to create temp dir: %v", err)
-	}
-	defer func() { _ = os.RemoveAll(tmpDir) }()
-
+	tmpDir := t.TempDir()
 	s := &Syncer{SitesRoot: tmpDir}
 	ctx := context.Background()
 
@@ -396,17 +391,17 @@ func TestDeleteSite(t *testing.T) {
 			name:     "delete directory",
 			siteName: "dir-site",
 			setup: func() {
-				_ = os.MkdirAll(filepath.Join(tmpDir, "dir-site", "subdir"), 0755)
-				_ = os.WriteFile(filepath.Join(tmpDir, "dir-site", "index.html"), []byte("test"), 0644)
+				_ = os.MkdirAll(filepath.Join(s.siteLink("default", "dir-site"), "subdir"), 0755)
+				_ = os.WriteFile(filepath.Join(s.siteLink("default", "dir-site"), "index.html"), []byte("test"), 0644)
 			},
 		},
 		{
-			name:     "delete symlink and repo",
+			name:     "delete symlink and clone",
 			siteName: "link-site",
 			setup: func() {
-				repoDir := filepath.Join(tmpDir, ".repos", "link-site")
-				_ = os.MkdirAll(filepath.Join(repoDir, "dist"), 0755)
-				_ = os.Symlink(filepath.Join(repoDir, "dist"), filepath.Join(tmpDir, "link-site"))
+				cloneDir := s.cloneDir("default", "link-site")
+				_ = os.MkdirAll(filepath.Join(cloneDir, "dist"), 0755)
+				_ = os.Symlink(filepath.Join(cloneDir, "dist"), s.siteLink("default", "link-site"))
 			},
 		},
 		{
@@ -420,22 +415,14 @@ func TestDeleteSite(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			tt.setup()
 
-			err := s.DeleteSite(ctx, tt.siteName)
-			if err != nil {
-				t.Errorf("DeleteSite() error = %v", err)
-				return
+			if err := s.DeleteSite(ctx, "default", tt.siteName); err != nil {
+				t.Fatalf("DeleteSite() error = %v", err)
 			}
-
-			// Prüfen dass Site-Pfad nicht mehr existiert
-			sitePath := filepath.Join(tmpDir, tt.siteName)
-			if _, err := os.Lstat(sitePath); !os.IsNotExist(err) {
-				t.Errorf("site path still exists: %s", sitePath)
+			if _, err := os.Lstat(s.siteLink("default", tt.siteName)); !os.IsNotExist(err) {
+				t.Errorf("site path still exists: %s", s.siteLink("default", tt.siteName))
 			}
-
-			// Prüfen dass Repo-Pfad nicht mehr existiert
-			repoPath := filepath.Join(tmpDir, ".repos", tt.siteName)
-			if _, err := os.Stat(repoPath); !os.IsNotExist(err) {
-				t.Errorf("repo path still exists: %s", repoPath)
+			if _, err := os.Stat(s.cloneDir("default", tt.siteName)); !os.IsNotExist(err) {
+				t.Errorf("clone still exists: %s", s.cloneDir("default", tt.siteName))
 			}
 		})
 	}
@@ -970,7 +957,7 @@ func TestDeleteSite_RemoveError(t *testing.T) {
 	ctx := context.Background()
 
 	// Test successful deletion of non-existent site (should not error)
-	err = s.DeleteSite(ctx, "nonexistent-site")
+	err = s.DeleteSite(ctx, "default", "nonexistent-site")
 	if err != nil {
 		t.Errorf("DeleteSite() for non-existent site: error = %v, want nil", err)
 	}
