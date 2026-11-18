@@ -269,8 +269,8 @@ func (s *Syncer) RunLoop(ctx context.Context) {
 }
 
 // Cleanup removes the paths of deleted sites. A legacy path /<name> (and
-// .repos/<name>) stays while any site of that name is still served from it,
-// that is until the syncer has reported its per-namespace content path.
+// .repos/<name>) stays while any site of that name may still be routed to it,
+// see routedToContentPath.
 func (s *Syncer) Cleanup(ctx context.Context) error {
 	logger := log.FromContext(ctx)
 
@@ -290,8 +290,7 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 			active[namespace] = map[string]bool{}
 		}
 		active[namespace][name] = true
-		contentPath, _, _ := unstructured.NestedString(item.Object, "status", "contentPath")
-		if contentPath != pagesv1.ContentPathFor(namespace, name) {
+		if !routedToContentPath(&item) {
 			legacyInUse[name] = true
 		}
 	}
@@ -335,6 +334,18 @@ func (s *Syncer) Cleanup(ctx context.Context) error {
 
 	s.removeLegacyClones(ctx, legacyInUse)
 	return nil
+}
+
+// routedToContentPath reports whether a site no longer needs its legacy path:
+// the syncer has linked it at /<namespace>/<name> (status.contentPath), and the
+// controller has switched its route there. The controller writes
+// status.internalURL from the same path after it has updated the addPrefix
+// Middleware, so a contentPath alone may still be routed to the legacy path.
+func routedToContentPath(site *unstructured.Unstructured) bool {
+	want := pagesv1.ContentPathFor(site.GetNamespace(), site.GetName())
+	contentPath, _, _ := unstructured.NestedString(site.Object, "status", "contentPath")
+	internalURL, _, _ := unstructured.NestedString(site.Object, "status", "internalURL")
+	return contentPath == want && strings.HasSuffix(internalURL, want+"/")
 }
 
 // removeOrphans removes the entries in a namespace directory that belong to

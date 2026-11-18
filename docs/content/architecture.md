@@ -227,11 +227,13 @@ At its start, before the first sync, the syncer moves each legacy clone to `.clo
 2. The legacy link `/sites/<name>` is pointed into the moved clone, so the site keeps serving under its old path.
 3. The syncer links `/sites/<namespace>/<name>` and writes `status.contentPath`.
 4. The operator switches the site's `addPrefix` and `internalURL` within seconds.
-5. Cleanup removes `/sites/<name>` and `/sites/.repos/<name>` once every site of that name has its `contentPath`, and `.repos` once it is empty.
+5. Cleanup removes `/sites/<name>` and `/sites/.repos/<name>` once every site of that name has moved: its `contentPath` is set, and its `internalURL` ends in `/<namespace>/<name>/`.
+   The operator writes the `internalURL` after it has updated the `addPrefix` middleware, so a link goes only after Traefik has stopped using it, even when an operator of an earlier version is still running.
+   `.repos` goes once it is empty.
 
 No site is cloned again or taken offline.
 While a site still serves under `/<name>`, nginx already strips two segments for the redirect of a directory requested without a trailing slash, so such a redirect lands on the site root.
-This lasts from the nginx rollout until the syncer has moved the site, seconds to minutes.
+This lasts from the nginx rollout until the operator has switched the site, seconds to minutes.
 
 A site named like a namespace keeps its legacy link `/sites/<namespace>` until it has moved.
 Sites in that namespace report `Synced=False` with reason `LegacyPathInUse` until cleanup has removed the link, usually within two sync intervals.

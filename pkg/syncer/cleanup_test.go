@@ -16,10 +16,14 @@ import (
 	pagesv1 "github.com/kup6s/pages/pkg/apis/v1beta1"
 )
 
-// fakeSite is a StaticSite as the syncer lists it; moved sets status.contentPath.
+// fakeSite is a StaticSite as the syncer lists it. moved sets status.contentPath
+// and, as the controller does once it has switched the site, status.internalURL
+// to the per-namespace path; staleRoute keeps the legacy internalURL, as a
+// controller that has not switched yet (or predates #158) leaves it.
 type fakeSite struct {
 	namespace, name string
 	moved           bool
+	staleRoute      bool
 	repo, path      string // defaults: an unreachable repo, "/"
 }
 
@@ -42,6 +46,13 @@ func newSitesClient(t *testing.T, sites ...fakeSite) *dynamicfake.FakeDynamicCli
 		}}
 		if site.moved {
 			if err := unstructured.SetNestedField(obj.Object, pagesv1.ContentPathFor(site.namespace, site.name), "status", "contentPath"); err != nil {
+				t.Fatal(err)
+			}
+			route := pagesv1.ContentPathFor(site.namespace, site.name)
+			if site.staleRoute {
+				route = "/" + site.name
+			}
+			if err := unstructured.SetNestedField(obj.Object, "http://pages-nginx.pages.svc"+route+"/", "status", "internalURL"); err != nil {
 				t.Fatal(err)
 			}
 		}
@@ -115,6 +126,24 @@ func TestCleanup_KeepsLegacyPathUntilEverySiteOfTheNameMoved(t *testing.T) {
 		if exists(p) {
 			t.Errorf("%s still exists after every site named docs moved", p)
 		}
+	}
+}
+
+// The syncer's contentPath only says the content is in place. Until the
+// controller has switched the route, which its internalURL shows, Traefik may
+// still send the site's requests to the legacy path.
+func TestCleanup_KeepsLegacyPathUntilTheControllerSwitchedTheRoute(t *testing.T) {
+	root := t.TempDir()
+	legacyLink := filepath.Join(root, "docs")
+	symlink(t, filepath.Join(root, clonesDirName, "team-a", "docs"), legacyLink)
+
+	s := &Syncer{SitesRoot: root, DynamicClient: newSitesClient(t,
+		fakeSite{namespace: "team-a", name: "docs", moved: true, staleRoute: true})}
+	if err := s.Cleanup(context.Background()); err != nil {
+		t.Fatalf("Cleanup: %v", err)
+	}
+	if !exists(legacyLink) {
+		t.Fatal("legacy link removed while the controller still routes team-a/docs to it")
 	}
 }
 
