@@ -317,6 +317,12 @@ nginx:
     initialDelaySeconds: 2
     periodSeconds: 5
 
+  # -- Seconds a terminating nginx pod keeps serving before nginx stops, so that the
+  # ingress controller drops its address first. Requests that reach a pod after it is
+  # gone hang until the controller's dial timeout. Runs `sleep` in the nginx image.
+  # Keep it well below the termination grace period (30 s). 0 disables the pause.
+  preStopSleepSeconds: 5
+
   service:
     # -- Service type
     type: ClusterIP

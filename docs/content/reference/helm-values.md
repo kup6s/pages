@@ -115,6 +115,7 @@ Complete reference for all Helm chart configuration options.
 | `nginx.topologySpreadConstraints` | (spread over nodes, see below) | Topology spread constraints. Set to `[]` to rely on the preferred pod anti-affinity alone |
 | `nginx.livenessProbe` | (HTTP `/health` on port 80, first after 5 s, then every 10 s) | Liveness probe configuration |
 | `nginx.readinessProbe` | (HTTP `/health` on port 80, first after 2 s, then every 5 s) | Readiness probe configuration |
+| `nginx.preStopSleepSeconds` | `5` | Seconds a terminating pod keeps serving, so the ingress controller drops its address before nginx stops. Needs `sleep` in the nginx image. `0` disables the pause |
 | `nginx.service.type` | `ClusterIP` | Service type |
 | `nginx.service.port` | `80` | Service port |
 | `nginx.service.annotations` | `{}` | Service annotations |

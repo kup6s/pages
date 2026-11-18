@@ -92,6 +92,27 @@ tests:
                 matchLabels:
                   example.com/tier: web
 
+  - it: should keep serving for 5 seconds after termination starts by default
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].lifecycle.preStop.exec.command
+          value: ["sleep", "5"]
+
+  - it: should take the pause before termination from nginx.preStopSleepSeconds
+    set:
+      nginx.preStopSleepSeconds: 10
+    asserts:
+      - equal:
+          path: spec.template.spec.containers[0].lifecycle.preStop.exec.command
+          value: ["sleep", "10"]
+
+  - it: should render no preStop hook when nginx.preStopSleepSeconds is 0
+    set:
+      nginx.preStopSleepSeconds: 0
+    asserts:
+      - notExists:
+          path: spec.template.spec.containers[0].lifecycle
+
   - it: should have liveness probe
     asserts:
       - equal:
