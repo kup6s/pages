@@ -67,13 +67,13 @@ Your site is live at `https://www.example.com` once the status shows `Ready`.
 │            ▼                                                             │
 │   ┌─────────────────┐                                                    │
 │   │     Traefik     │  Host(`www.customer.com`) matched                  │
-│   │                 │  Middleware: addPrefix(/customer-website)          │
+│   │                 │  Middleware: addPrefix(/customer/website)          │
 │   └────────┬────────┘                                                    │
-│            │  /customer-website/about.html                               │
+│            │  /customer/website/about.html                               │
 │            ▼                                                             │
 │   ┌─────────────────┐                                                    │
 │   │  nginx (1 Pod)  │  root /sites;                                      │
-│   │                 │  serves /sites/customer-website/about.html         │
+│   │                 │  serves /sites/customer/website/about.html         │
 │   └────────┬────────┘                                                    │
 │            │                                                             │
 │            ▼                                                             │

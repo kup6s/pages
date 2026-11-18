@@ -30,12 +30,13 @@ The status shows the in-cluster address:
 
 ```bash
 kubectl get staticsite cluster-docs -n pages -o jsonpath='{.status.internalURL}'
-# http://kup6s-pages-nginx.kup6s-pages.svc/cluster-docs/
+# http://kup6s-pages-nginx.kup6s-pages.svc/pages/cluster-docs/
 ```
 
 `status.url` stays empty.
 
-Point the root of your proxy at `internalURL`, so `/` of the proxy maps to `/cluster-docs/` on nginx, the way Traefik does it for public sites.
+Point the root of your proxy at `internalURL`, so `/` of the proxy maps to `/pages/cluster-docs/` on nginx, the way Traefik does it for public sites.
+Read the address from the status rather than building it: it contains the namespace, and a site moved from the layout before 1.0.0-rc.7 changes it once.
 Redirects from nginx (a directory requested without a trailing slash) are relative to the site root.
 If your proxy serves the site under a sub-path, send that sub-path in an `X-Forwarded-Prefix` header and nginx puts it in front of its redirects.
 

@@ -5,13 +5,13 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"sigs.k8s.io/controller-runtime/pkg/log"
 )
 
-// siteLocks serialises work on one site directory. Directories are keyed by
-// name only (see #158), so the lock is too.
+// siteLocks serialises work on one site, keyed by siteKey.
 type siteLocks struct {
 	mu    sync.Mutex
 	locks map[string]*sync.Mutex
@@ -33,13 +33,40 @@ func (l *siteLocks) get(name string) *sync.Mutex {
 
 // removeLeftovers deletes temporary clones, previous clones and temporary
 // links of interrupted syncs. Entries of a site that is syncing are kept.
-// Scans .repos only for .tmp-/.old- and the sites root only for .tmp-link-.
+// Scans the clone directories only for .tmp-/.old- and the link directories
+// only for .tmp-link-, in each namespace and in the legacy layout.
 func (s *Syncer) removeLeftovers(ctx context.Context) {
-	s.removeTempEntries(ctx, filepath.Join(s.SitesRoot, reposDirName), tmpRepoPrefix, oldRepoPrefix)
-	s.removeTempEntries(ctx, s.SitesRoot, tmpLinkPrefix)
+	clones := filepath.Join(s.SitesRoot, clonesDirName)
+	for _, namespace := range subdirs(clones) {
+		s.removeTempEntries(ctx, filepath.Join(clones, namespace), namespace, tmpRepoPrefix, oldRepoPrefix)
+	}
+	for _, namespace := range subdirs(s.SitesRoot) {
+		s.removeTempEntries(ctx, filepath.Join(s.SitesRoot, namespace), namespace, tmpLinkPrefix)
+	}
+	// Entries of the legacy layout carry no namespace, and no sync writes
+	// them any more, so their lock is never held by a sync.
+	s.removeTempEntries(ctx, filepath.Join(s.SitesRoot, reposDirName), "", tmpRepoPrefix, oldRepoPrefix)
+	s.removeTempEntries(ctx, s.SitesRoot, "", tmpLinkPrefix)
 }
 
-func (s *Syncer) removeTempEntries(ctx context.Context, dir string, prefixes ...string) {
+// subdirs lists the directories in dir, without dot entries and symlinks.
+func subdirs(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	var names []string
+	for _, entry := range entries {
+		if entry.IsDir() && !strings.HasPrefix(entry.Name(), ".") {
+			names = append(names, entry.Name())
+		}
+	}
+	return names
+}
+
+// removeTempEntries removes temporary entries in dir. namespace selects the
+// lock of the site an entry belongs to; empty means the legacy layout.
+func (s *Syncer) removeTempEntries(ctx context.Context, dir, namespace string, prefixes ...string) {
 	logger := log.FromContext(ctx)
 	entries, err := os.ReadDir(dir)
 	if err != nil {
@@ -51,7 +78,11 @@ func (s *Syncer) removeTempEntries(ctx context.Context, dir string, prefixes ...
 			if !ok {
 				continue
 			}
-			lock := s.locks.get(name)
+			key := name
+			if namespace != "" {
+				key = siteKey(namespace, name)
+			}
+			lock := s.locks.get(key)
 			if lock.TryLock() {
 				p := filepath.Join(dir, entry.Name())
 				if err := removePathOrSymlink(p); err != nil {

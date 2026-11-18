@@ -8,7 +8,7 @@ Two components sharing a PVC:
 - **Operator** (`cmd/operator/`) - Watches `StaticSite` CRDs, creates Traefik IngressRoutes + Certificates
 - **Syncer** (`cmd/syncer/`) - Clones/pulls Git repos, serves webhooks
 
-Traffic: Traefik → addPrefix middleware → nginx → `/sites/<name>/`
+Traffic: Traefik → addPrefix middleware → nginx → `/sites/<namespace>/<name>/`
 
 ## Project Structure
 

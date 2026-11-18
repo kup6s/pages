@@ -12,11 +12,21 @@ import (
 )
 
 const (
+	// clonesDirName holds the clones, one directory per namespace:
+	// .clones/<namespace>/<name>. Sites are served from /<namespace>/<name>.
+	clonesDirName = ".clones"
+	// reposDirName holds clones of the layout before #158: .repos/<name>,
+	// served from /<name>. The syncer moves them to .clones and removes them.
 	reposDirName  = ".repos"
 	tmpRepoPrefix = ".tmp-"
 	oldRepoPrefix = ".old-"
 	tmpLinkPrefix = ".tmp-link-"
 )
+
+// siteKey identifies a site across namespaces.
+func siteKey(namespace, name string) string {
+	return namespace + "/" + name
+}
 
 // normalizeSubpath turns spec.path into a directory relative to the
 // repository root. The empty string means the root itself.

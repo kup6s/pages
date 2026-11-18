@@ -123,11 +123,17 @@ tests:
           path: data["default.conf"]
           pattern: '(?s)map \$request_uri \$leaves_site \{.*server \{.*if \(\$leaves_site\) \{\s+return 400;'
 
-  - it: should never serve repository checkouts
+  - it: should strip the namespace and name segments from the redirect path
     asserts:
       - matchRegex:
           path: data["default.conf"]
-          pattern: 'location ~ \^/\\\. \{\s+return 404;'
+          pattern: '"~\^/\[\^/\?\]\+/\[\^/\?\]\+\(\?<path>/\[\^\?\]\*\)" \$path;'
+
+  - it: should never serve repository checkouts or temporary entries of a namespace
+    asserts:
+      - matchRegex:
+          path: data["default.conf"]
+          pattern: 'location ~ \^\(/\[\^/\]\+\)\?/\\\. \{\s+return 404;'
 
   - it: should deny git metadata before the asset rule inside location /
     asserts:

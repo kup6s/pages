@@ -81,18 +81,58 @@ func TestCleanup_KeepsDotEntries(t *testing.T) {
 func TestSyncSite_WaitsForRunningSyncOfSameSite(t *testing.T) {
 	r := newTestRemote(t, archiveFiles, remoteOptions{})
 	s := newTestSyncer(t, r)
-	lock := s.locks.get("site")
+	lock := s.locks.get(siteKey("default", "site"))
 	lock.Lock()
 
 	done := make(chan error, 1)
 	go func() { done <- s.syncSite(context.Background(), testSite(r, "/2018")) }()
 
 	time.Sleep(200 * time.Millisecond)
-	if _, err := os.Stat(s.repoDir("site")); !os.IsNotExist(err) {
+	if _, err := os.Stat(s.cloneDir("default", "site")); !os.IsNotExist(err) {
 		t.Error("syncSite cloned while another sync held the site lock")
 	}
 	lock.Unlock()
 	if err := <-done; err != nil {
 		t.Fatalf("syncSite: %v", err)
+	}
+}
+
+func TestRemoveLeftovers_RemovesTemporaryEntriesInNamespaceDirectories(t *testing.T) {
+	root := t.TempDir()
+	clones := filepath.Join(root, clonesDirName, "team-a")
+	links := filepath.Join(root, "team-a")
+	mkdirs(t, filepath.Join(clones, ".tmp-site-0123abcd"), filepath.Join(clones, ".old-site-0123abcd"), filepath.Join(clones, "site"), links)
+	if err := os.Symlink(filepath.Join(clones, "site"), filepath.Join(links, ".tmp-link-site-0123abcd")); err != nil {
+		t.Fatal(err)
+	}
+	s := &Syncer{SitesRoot: root}
+
+	s.removeLeftovers(context.Background())
+
+	if got := listDir(t, clones); !slices.Equal(got, []string{"site"}) {
+		t.Errorf(".clones/team-a = %v, want [site]", got)
+	}
+	if got := listDir(t, links); len(got) != 0 {
+		t.Errorf("team-a = %v, want empty", got)
+	}
+}
+
+func TestRemoveLeftovers_KeepsEntriesOfRunningSyncInItsNamespaceOnly(t *testing.T) {
+	root := t.TempDir()
+	busy := filepath.Join(root, clonesDirName, "team-a", ".tmp-site-0123abcd")
+	idle := filepath.Join(root, clonesDirName, "team-b", ".tmp-site-0123abcd")
+	mkdirs(t, busy, idle)
+	s := &Syncer{SitesRoot: root}
+
+	lock := s.locks.get(siteKey("team-a", "site"))
+	lock.Lock()
+	s.removeLeftovers(context.Background())
+	lock.Unlock()
+
+	if _, err := os.Stat(busy); err != nil {
+		t.Error("temp clone of the running sync of team-a/site was removed")
+	}
+	if _, err := os.Stat(idle); !os.IsNotExist(err) {
+		t.Error("leftover of team-b/site was kept")
 	}
 }

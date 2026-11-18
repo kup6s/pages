@@ -103,7 +103,7 @@ func (w *WebhookServer) handleDelete(ctx context.Context, rw http.ResponseWriter
 	logger := log.FromContext(ctx)
 	logger.Info("Delete triggered", "namespace", namespace, "name", name)
 
-	if err := w.Syncer.DeleteSite(ctx, name); err != nil {
+	if err := w.Syncer.DeleteSite(ctx, namespace, name); err != nil {
 		logger.Error(err, "Delete failed", "namespace", namespace, "name", name)
 		http.Error(rw, err.Error(), http.StatusInternalServerError)
 		return
