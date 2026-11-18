@@ -36,7 +36,7 @@ The site keeps serving its last good content.
 | `DiskFull` | The sites volume has less free space than `--min-free-percent` | Grow the PVC or remove unused sites |
 | `Timeout` | A git operation took longer than `--git-timeout` | Raise `syncer.gitTimeout` for very large repositories |
 | `InvalidSpec` | `repo` is not allowed by `--allowed-hosts`, or `path` is invalid | Fix the StaticSite |
-| `LegacyPathInUse` | After an upgrade from a version before 1.0.0-rc.7, a site named like this site's namespace still serves from its legacy link `/sites/<namespace>` | Nothing; cleanup removes the link once that site has moved, usually within two sync intervals. See [Moving from the layout before 1.0.0-rc.7]({{< relref "/architecture#moving-from-the-layout-before-100-rc7" >}}) |
+| `LegacyPathInUse` | After an upgrade from a version before 1.0.0-rc.7, a site in another namespace, named like this site's namespace, still serves from its legacy link `/sites/<namespace>` | Nothing; cleanup removes the link once that site has moved, usually within two sync intervals. See [Moving from the layout before 1.0.0-rc.7]({{< relref "/architecture#moving-from-the-layout-before-100-rc7" >}}) |
 
 Broken or interrupted clones need no manual cleanup.
 The syncer detects them, including a lock file left by a fetch that timed out or was killed, deletes the leftovers, and clones again on the next sync.

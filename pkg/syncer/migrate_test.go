@@ -161,3 +161,29 @@ func TestMigrate_FailedRelinkPutsTheCloneBack(t *testing.T) {
 		t.Error("clone stayed in .clones although the legacy link could not follow it")
 	}
 }
+
+// A site named like its namespace has its own legacy link where its namespace
+// directory belongs (#192). It replaces that link instead of waiting for it.
+func TestMigrate_MovesSiteNamedLikeItsNamespace(t *testing.T) {
+	r := newTestRemote(t, archiveFiles, remoteOptions{})
+	s := newTestSyncer(t, r)
+	site := &staticSiteData{Name: "docs", Namespace: "docs", Repo: r.URL, Branch: "main", Path: "/2018"}
+	legacySite(t, s, site, "2018")
+	c := newSitesClient(t, fakeSite{namespace: "docs", name: "docs", repo: r.URL, path: "/2018"})
+	s.DynamicClient = c
+
+	s.migrateLegacyLayout(context.Background())
+
+	if _, err := os.Stat(filepath.Join(s.cloneDir("docs", "docs"), ".git", "sentinel")); err != nil {
+		t.Errorf("clone was not moved to .clones/docs/docs: %v", err)
+	}
+	if info, err := os.Lstat(filepath.Join(s.SitesRoot, "docs")); err != nil || !info.IsDir() {
+		t.Fatalf("/docs is not the namespace directory: %v", err)
+	}
+	if got := readFile(t, filepath.Join(s.siteLink("docs", "docs"), "index.html")); got != "2018 v1" {
+		t.Errorf("docs/docs serves %q, want 2018 v1", got)
+	}
+	if got := contentPathOf(t, c, "docs", "docs"); got != "/docs/docs" {
+		t.Errorf("status.contentPath = %q, want /docs/docs", got)
+	}
+}

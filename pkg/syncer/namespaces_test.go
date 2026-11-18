@@ -118,3 +118,28 @@ func TestDeleteSite_RemovesOnlyItsNamespace(t *testing.T) {
 		t.Errorf("team-b/site serves %q after deleting team-a/site", got)
 	}
 }
+
+// Without a matching legacy clone the sync itself replaces the site's own
+// legacy link at its namespace directory (#192).
+func TestSyncSite_ReplacesItsOwnLegacyLinkAtItsNamespaceDirectory(t *testing.T) {
+	r := newTestRemote(t, archiveFiles, remoteOptions{})
+	s := newTestSyncer(t, r)
+	legacyTarget := filepath.Join(s.SitesRoot, reposDirName, "docs")
+	mkdirs(t, legacyTarget)
+	symlink(t, legacyTarget, filepath.Join(s.SitesRoot, "docs"))
+	site := &staticSiteData{Name: "docs", Namespace: "docs", Repo: r.URL, Branch: "main", Path: "/2018"}
+
+	if err := s.syncSite(context.Background(), site); err != nil {
+		t.Fatalf("syncSite: %v", err)
+	}
+
+	if info, err := os.Lstat(filepath.Join(s.SitesRoot, "docs")); err != nil || !info.IsDir() {
+		t.Fatalf("/docs is not the namespace directory: %v", err)
+	}
+	if got := readFile(t, filepath.Join(s.siteLink("docs", "docs"), "index.html")); got != "2018 v1" {
+		t.Errorf("docs/docs serves %q, want 2018 v1", got)
+	}
+	if names := listDir(t, legacyTarget); len(names) != 0 {
+		t.Errorf("legacy target got %v", names)
+	}
+}
