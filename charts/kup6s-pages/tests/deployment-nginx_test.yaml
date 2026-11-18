@@ -160,3 +160,16 @@ tests:
       - matchRegex:
           path: spec.template.metadata.annotations["checksum/config"]
           pattern: '^[0-9a-f]{64}$'
+
+  - it: should set no priority class by default
+    asserts:
+      - notExists:
+          path: spec.template.spec.priorityClassName
+
+  - it: should set the priority class from nginx.priorityClassName
+    set:
+      nginx.priorityClassName: example-low
+    asserts:
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: example-low

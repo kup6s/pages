@@ -91,6 +91,9 @@ spec:
         - name: sites
           persistentVolumeClaim:
             claimName: {{ include "kup6s-pages.pvcName" . }}
+      {{- with .Values.syncer.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
       {{- with .Values.syncer.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

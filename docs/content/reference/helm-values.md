@@ -48,6 +48,7 @@ Complete reference for all Helm chart configuration options.
 | `operator.resources.limits.memory` | `128Mi` | Memory limit |
 | `operator.resources.requests.cpu` | `100m` | CPU request |
 | `operator.resources.requests.memory` | `64Mi` | Memory request |
+| `operator.priorityClassName` | `""` | PriorityClass of the pods. Empty uses the cluster's default class |
 | `operator.nodeSelector` | `{}` | Node selector |
 | `operator.tolerations` | `[]` | Tolerations |
 | `operator.affinity` | `{}` | Affinity rules |
@@ -82,6 +83,7 @@ Complete reference for all Helm chart configuration options.
 | `syncer.resources.limits.memory` | `256Mi` | Memory limit. Sufficient for sites with a path; sites with path `/` and repositories above about 1 GB need more |
 | `syncer.resources.requests.cpu` | `100m` | CPU request |
 | `syncer.resources.requests.memory` | `128Mi` | Memory request |
+| `syncer.priorityClassName` | `""` | PriorityClass of the pods. Empty uses the cluster's default class |
 | `syncer.nodeSelector` | `{}` | Node selector |
 | `syncer.tolerations` | `[]` | Tolerations |
 | `syncer.affinity` | `{}` | Affinity rules |
@@ -109,6 +111,7 @@ Complete reference for all Helm chart configuration options.
 | `nginx.resources.limits.memory` | `128Mi` | Memory limit |
 | `nginx.resources.requests.cpu` | `50m` | CPU request |
 | `nginx.resources.requests.memory` | `64Mi` | Memory request |
+| `nginx.priorityClassName` | `""` | PriorityClass of the pods. Empty uses the cluster's default class |
 | `nginx.nodeSelector` | `{}` | Node selector |
 | `nginx.tolerations` | `[]` | Tolerations |
 | `nginx.affinity` | (pod anti-affinity) | Affinity rules |

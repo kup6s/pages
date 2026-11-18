@@ -89,6 +89,9 @@ operator:
       cpu: 100m
       memory: 64Mi
 
+  # -- PriorityClass of the pods. Empty uses the cluster's default class.
+  priorityClassName: ""
+
   # -- Node selector
   nodeSelector: {}
 
@@ -198,6 +201,9 @@ syncer:
       cpu: 100m
       memory: 128Mi
 
+  # -- PriorityClass of the pods. Empty uses the cluster's default class.
+  priorityClassName: ""
+
   # -- Node selector
   nodeSelector: {}
 
@@ -267,6 +273,9 @@ nginx:
     requests:
       cpu: 50m
       memory: 64Mi
+
+  # -- PriorityClass of the pods. Empty uses the cluster's default class.
+  priorityClassName: ""
 
   # -- Node selector
   nodeSelector: {}

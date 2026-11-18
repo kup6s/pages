@@ -143,6 +143,7 @@
             "requests": { "type": "object" }
           }
         },
+        "priorityClassName": { "type": "string" },
         "nodeSelector": {
           "type": "object",
           "description": "Node selector",
@@ -261,6 +262,7 @@
             "requests": { "type": "object" }
           }
         },
+        "priorityClassName": { "type": "string" },
         "nodeSelector": {
           "type": "object",
           "additionalProperties": { "type": "string" }
@@ -341,6 +343,7 @@
             "requests": { "type": "object" }
           }
         },
+        "priorityClassName": { "type": "string" },
         "nodeSelector": {
           "type": "object",
           "additionalProperties": { "type": "string" }
