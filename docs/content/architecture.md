@@ -231,12 +231,17 @@ At its start, before the first sync, the syncer moves each legacy clone to `.clo
    The operator writes the `internalURL` after it has updated the `addPrefix` middleware, so a link goes only after Traefik has stopped using it, even when an operator of an earlier version is still running.
    `.repos` goes once it is empty.
 
-No site is cloned again or taken offline.
+No site is cloned again, and no site goes offline except a site named like its own namespace, see below.
 While a site still serves under `/<name>`, nginx already strips two segments for the redirect of a directory requested without a trailing slash, so such a redirect lands on the site root.
 This lasts from the nginx rollout until the operator has switched the site, seconds to minutes.
 
-A site named like a namespace keeps its legacy link `/sites/<namespace>` until it has moved.
-Sites in that namespace report `Synced=False` with reason `LegacyPathInUse` until cleanup has removed the link, usually within two sync intervals.
+A site named like a namespace has its legacy link at `/sites/<namespace>`, the path of that namespace's directory.
+Both cannot exist at once:
+
+- If the site is in that namespace itself (`kup6s-docs/kup6s-docs`), the syncer replaces its legacy link with the namespace directory when it moves the site.
+  The site answers `404` under its legacy prefix from then until the operator has switched it, seconds after the status update.
+  A proxy in front of a private site that uses a fixed path breaks at the same moment and must switch to the new `internalURL`.
+- If the site is in another namespace, the other sites of that namespace report `Synced=False` with reason `LegacyPathInUse` until the site has moved and cleanup has removed the link, usually within two sync intervals.
 
 ### Webhook Sync (Instant)
 

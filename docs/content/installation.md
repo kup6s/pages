@@ -78,6 +78,8 @@ From 1.0.0-rc.7 on, each site is served from `/<namespace>/<name>` instead of `/
    Without it the API server drops the field, every site stays on its legacy path, and nothing breaks, but nothing moves either.
 2. Upgrade the chart.
    The syncer moves the existing clones at its start, without cloning again, and every site keeps serving while it moves.
+   A site named like its own namespace is the exception: it answers `404` under its old path for the seconds until the operator has switched it.
+   With 1.0.0-rc.7 such a site did not move at all and stopped syncing (#192); upgrading to 1.0.0-rc.8 moves it.
    See [Moving from the layout before 1.0.0-rc.7]({{< relref "/architecture#moving-from-the-layout-before-100-rc7" >}}).
 3. Update proxies in front of private sites that use a fixed path instead of `status.internalURL`.
    The internal address changes from `http://<nginx>/<name>/` to `http://<nginx>/<namespace>/<name>/`.

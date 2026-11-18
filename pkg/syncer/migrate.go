@@ -59,7 +59,7 @@ func (s *Syncer) migrateSite(ctx context.Context, site *staticSiteData) error {
 	if err != nil || !s.cloneUsable(ctx, legacy, site, subpath) {
 		return nil
 	}
-	if err := s.ensureNamespaceDir(site.Namespace); err != nil {
+	if err := s.ensureNamespaceDir(site); err != nil {
 		if syncReason(err) == pagesv1.SyncReasonLegacyPathInUse {
 			log.FromContext(ctx).Info("Legacy clone waits for its namespace directory", "namespace", site.Namespace, "name", site.Name, "reason", err.Error())
 			return nil

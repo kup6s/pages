@@ -105,7 +105,7 @@ func (s *Syncer) swapClone(ctx context.Context, site *staticSiteData, subpath, t
 
 // linkSite points /<namespace>/<name> at the served directory of the clone.
 func (s *Syncer) linkSite(site *staticSiteData, subpath string) error {
-	if err := s.ensureNamespaceDir(site.Namespace); err != nil {
+	if err := s.ensureNamespaceDir(site); err != nil {
 		return err
 	}
 	target := filepath.Join(s.cloneDir(site.Namespace, site.Name), subpath)
@@ -119,18 +119,27 @@ func (s *Syncer) linkSite(site *staticSiteData, subpath string) error {
 	return nil
 }
 
-// ensureNamespaceDir creates /<namespace>. While a site named like the
-// namespace is still served from its legacy link there, the site waits:
-// creating the directory would write into that site's content.
-func (s *Syncer) ensureNamespaceDir(namespace string) error {
-	dir := filepath.Join(s.SitesRoot, namespace)
+// ensureNamespaceDir creates /<namespace> for the site. Anything else there is
+// the legacy path /<name> of a site named like the namespace. If that is this
+// site's own name, the legacy path goes now: it can only be removed once the
+// site has moved, and the site can only move into this directory (#192). The
+// site is unreachable under its legacy prefix until the controller has
+// switched it, seconds after the status update. Another site's legacy path
+// makes the site wait instead; creating the directory would write into that
+// site's content.
+func (s *Syncer) ensureNamespaceDir(site *staticSiteData) error {
+	dir := filepath.Join(s.SitesRoot, site.Namespace)
 	info, err := os.Lstat(dir)
 	switch {
 	case err == nil && info.IsDir():
 		return nil
+	case err == nil && site.Name == site.Namespace:
+		if err := removePathOrSymlink(dir); err != nil {
+			return newSyncError(pagesv1.SyncReasonSyncFailed, fmt.Errorf("remove own legacy path %s: %w", dir, err))
+		}
 	case err == nil:
 		return newSyncError(pagesv1.SyncReasonLegacyPathInUse,
-			fmt.Errorf("%s is still the legacy path of a site named %q; it is removed once that site has moved", dir, namespace))
+			fmt.Errorf("%s is still the legacy path of a site named %q; it is removed once that site has moved", dir, site.Namespace))
 	case !os.IsNotExist(err):
 		return newSyncError(pagesv1.SyncReasonSyncFailed, err)
 	}
