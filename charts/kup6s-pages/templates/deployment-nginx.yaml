@@ -83,6 +83,9 @@ spec:
           emptyDir: {}
         - name: nginx-run
           emptyDir: {}
+      {{- with .Values.nginx.priorityClassName }}
+      priorityClassName: {{ . | quote }}
+      {{- end }}
       {{- with .Values.nginx.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

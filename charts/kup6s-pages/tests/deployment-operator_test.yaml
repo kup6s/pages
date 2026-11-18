@@ -99,3 +99,16 @@ tests:
       - contains:
           path: spec.template.spec.containers[0].args
           content: --pages-wildcard-secret=my-custom-wildcard-cert
+
+  - it: should set no priority class by default
+    asserts:
+      - notExists:
+          path: spec.template.spec.priorityClassName
+
+  - it: should set the priority class from operator.priorityClassName
+    set:
+      operator.priorityClassName: example-low
+    asserts:
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: example-low

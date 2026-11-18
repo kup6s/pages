@@ -104,3 +104,16 @@ tests:
       syncer.replicas: 2
     asserts:
       - failedTemplate: {}
+
+  - it: should set no priority class by default
+    asserts:
+      - notExists:
+          path: spec.template.spec.priorityClassName
+
+  - it: should set the priority class from syncer.priorityClassName
+    set:
+      syncer.priorityClassName: example-low
+    asserts:
+      - equal:
+          path: spec.template.spec.priorityClassName
+          value: example-low
