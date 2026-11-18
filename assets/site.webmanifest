@@ -1,0 +1,29 @@
+{
+  "name": "kup6s-pages Documentation",
+  "short_name": "kup6s-pages",
+  "description": "Documentation for kup6s-pages - Kubernetes Operator for multi-tenant static website hosting",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1e1e1e",
+  "icons": [
+    {
+      "src": "/assets/kup6s-pages-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/assets/kup6s-pages-logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/assets/kup6s-pages-logo-wide.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
