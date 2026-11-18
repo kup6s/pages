@@ -158,10 +158,10 @@ Before releasing:
 
 2. **Update CHANGELOG.md** (if it exists) with release notes
 
-3. **Verify Chart.yaml** has placeholder version (workflow updates it automatically)
+3. **Leave Chart.yaml alone**: on `main` it always carries the placeholder version, and the release workflow sets the real one from the tag
    ```yaml
-   version: 0.1.0      # Will be overwritten by release workflow
-   appVersion: "0.1.0" # Will be overwritten by release workflow
+   version: 0.0.0
+   appVersion: "latest"
    ```
 
 ### Creating a Release
@@ -197,8 +197,12 @@ The [release workflow](.github/workflows/release.yaml) automatically:
 1. Runs all tests
 2. Builds Docker images with version tags
 3. Pushes images to ghcr.io
-4. Updates Chart.yaml with release version
+4. Sets `version` and `appVersion` in `Chart.yaml` from the tag, in the workflow's checkout only
 5. Packages and pushes Helm chart to OCI registry
+6. Builds the documentation from the tag and deploys it
+
+Every job checks out the release tag, so images, chart and documentation come from the same commit.
+The workflow commits nothing, so `main` can be protected by a ruleset that requires pull requests.
 
 Monitor the workflow at: `https://github.com/kup6s/pages/actions`
 

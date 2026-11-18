@@ -2,8 +2,11 @@ apiVersion: v2
 name: kup6s-pages
 description: Kubernetes Operator for multi-tenant static website hosting
 type: application
-version: 1.0.0-rc.6
-appVersion: "1.0.0-rc.6"
+# The release workflow sets version and appVersion from the release tag when it
+# packages the chart; main never carries a released version. "latest" makes a chart
+# installed from a checkout run the images of the newest release.
+version: 0.0.0
+appVersion: "latest"
 home: https://github.com/kup6s/pages
 icon: https://pages-docs.kup6s.com/assets/kup6s-pages-icon.svg
 sources:
