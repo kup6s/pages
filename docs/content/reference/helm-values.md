@@ -97,6 +97,7 @@ Complete reference for all Helm chart configuration options.
 | `nginx.tolerations` | `[]` | Tolerations |
 | `nginx.affinity` | (pod anti-affinity) | Affinity rules |
 | `nginx.topologySpreadConstraints` | (spread over nodes, see below) | Topology spread constraints. Set to `[]` to rely on the preferred pod anti-affinity alone |
+| `nginx.preStopSleepSeconds` | `5` | Seconds a terminating pod keeps serving, so the ingress controller drops its address before nginx stops. Needs `sleep` in the nginx image. `0` disables the pause |
 | `nginx.service.type` | `ClusterIP` | Service type |
 | `nginx.service.port` | `80` | Service port |
 | `nginx.customConfig` | `""` | Custom nginx configuration. Replaces the whole default `server` block, including the directory redirect that uses `X-Forwarded-Prefix` |

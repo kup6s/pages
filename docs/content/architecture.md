@@ -148,6 +148,13 @@ If the cluster always has two or more nodes for nginx, add `minDomains: 2` to th
 A replica that lost its node then stays `Pending` until a second node is schedulable, so the replicas are spread again after every drain or reboot, while the other replica keeps serving.
 Do not set it on a single-node cluster, where the second replica would never start.
 
+A terminating nginx pod keeps serving for a few seconds before nginx stops (`nginx.preStopSleepSeconds`, default 5).
+When Kubernetes deletes a pod, for a rollout, a drain, or an eviction, it removes the pod from the Service endpoints and starts the termination at the same time.
+The ingress controller learns about the removed endpoint a moment later.
+Without the pause nginx would already be gone, and a request routed to the old address would hang until the controller's dial timeout and end in `504 Gateway Timeout`.
+The pause runs `sleep` in the nginx image; nginx then shuts down gracefully on the image's stop signal `SIGQUIT` and finishes the requests it has accepted.
+Pause and shutdown share the termination grace period of 30 seconds, so keep the pause well below it.
+
 ## Request Flow
 
 ```

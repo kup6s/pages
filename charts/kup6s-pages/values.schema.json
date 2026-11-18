@@ -356,6 +356,7 @@
         },
         "livenessProbe": { "type": "object" },
         "readinessProbe": { "type": "object" },
+        "preStopSleepSeconds": { "type": "integer", "minimum": 0 },
         "service": {
           "type": "object",
           "properties": {

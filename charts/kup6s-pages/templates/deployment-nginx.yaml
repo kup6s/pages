@@ -58,6 +58,12 @@ spec:
           readinessProbe:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          {{- if gt (int .Values.nginx.preStopSleepSeconds) 0 }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "{{ int .Values.nginx.preStopSleepSeconds }}"]
+          {{- end }}
           {{- with .Values.nginx.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
