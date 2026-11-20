@@ -10,11 +10,21 @@ tests:
           path: spec.replicas
           value: 2
 
-  - it: should use default nginx image
+  # Even minor = stable branch. A floating tag or a mainline (odd) minor fails here:
+  # mainline tags get no more images once the next stable branch appears.
+  - it: should default to a patch-pinned nginx of a stable branch
+    asserts:
+      - matchRegex:
+          path: spec.template.spec.containers[0].image
+          pattern: ^docker\.io/library/nginx:1\.\d*[02468]\.\d+-alpine$
+
+  - it: should use the configured nginx image tag
+    set:
+      nginx.image.tag: 1.30.9-alpine
     asserts:
       - equal:
           path: spec.template.spec.containers[0].image
-          value: docker.io/library/nginx:1.29-alpine
+          value: docker.io/library/nginx:1.30.9-alpine
 
   - it: should mount PVC as read-only
     asserts:

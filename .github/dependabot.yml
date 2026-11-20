@@ -26,3 +26,15 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+
+  # Images referenced by the Helm chart: the nginx tag in values.yaml.
+  # Daily, because nginx patch releases are mostly security fixes.
+  - package-ecosystem: "helm"
+    directory: "/charts/kup6s-pages"
+    schedule:
+      interval: "daily"
+    ignore:
+      # nginx stays on the stable branch (even minor number); odd minors are mainline.
+      # The chart unit test rejects a mainline tag as well.
+      - dependency-name: "*nginx*"
+        versions: ["1.31.x", "1.33.x", "1.35.x", "1.37.x", "1.39.x"]

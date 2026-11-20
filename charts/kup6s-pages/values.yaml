@@ -241,8 +241,10 @@ nginx:
     registry: docker.io
     # -- nginx image repository
     repository: library/nginx
-    # -- nginx image tag
-    tag: "1.29-alpine"
+    # -- nginx image tag, patch-pinned on a stable branch (even minor number).
+    # A floating tag of a mainline branch gets no more images once the next stable
+    # branch appears. Dependabot updates this value (.github/dependabot.yml).
+    tag: "1.30.7-alpine"
     # -- Image pull policy
     pullPolicy: IfNotPresent
 

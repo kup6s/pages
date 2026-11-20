@@ -101,7 +101,7 @@ Complete reference for all Helm chart configuration options.
 | `nginx.replicas` | `2` | Number of nginx replicas for HA |
 | `nginx.image.registry` | `docker.io` | Image registry |
 | `nginx.image.repository` | `library/nginx` | Image repository |
-| `nginx.image.tag` | `1.29-alpine` | Image tag |
+| `nginx.image.tag` | patch release of the nginx stable branch, for example `1.30.7-alpine` | Image tag; `values.yaml` holds the current default, Dependabot updates it |
 | `nginx.image.pullPolicy` | `IfNotPresent` | Image pull policy |
 | `nginx.podAnnotations` | `{}` | Pod annotations |
 | `nginx.podLabels` | `{}` | Pod labels |
